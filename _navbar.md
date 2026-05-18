@@ -1,0 +1,4 @@
+- [Ditteau Data Drive](https://drive.google.com/drive/folders/1WpvGWVMiiqoHQig0Xv9evkS52DU2GZDE)
+- [Serensoft Wiki](https://ditteau.github.io/serensoft-wiki/)
+- [dbt Cloud](https://cloud.getdbt.com/)
+- [Snowflake](https://app.snowflake.com/)
