@@ -38,7 +38,7 @@
 
 - **Runbooks**
 - [Snowflake New School Setup](runbooks/snowflake-new-school.md)
-- [dbt Cloud Job Setup](runbooks/dbt-cloud-job.md)
+- [External Data Sources](runbooks/external-data-sources.md)
 - [Source Refresh Troubleshooting](runbooks/source-refresh.md)
 
 ---
