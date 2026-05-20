@@ -51,3 +51,4 @@
 
 - **Decisions (ADRs)**
 - [ADR Template](decisions/adr-template.md)
+- [ADR-001: External Sources Shared Database](decisions/adr-001-external-sources-shared-database.md)
