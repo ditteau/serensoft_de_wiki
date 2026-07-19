@@ -118,7 +118,7 @@ td:first-child{width:6px;padding:0;border-right:none}
 <div class="hdr">
   <div class="eye">Ditteau Data · DEMEAU · Gap Analysis</div>
   <h1>KPI Catalog → Mart → Dashboard Coverage</h1>
-  <div class="sub">131 catalog entries · DEMEAU_DD_DEV.DISTRIBUTE · demeau_enrollment_dashboard_v2.py</div>
+  <div class="sub">138 catalog entries · DEMEAU_DD_DEV.DISTRIBUTE · demeau_enrollment_dashboard_v2.py</div>
   <a href="https://app.snowflake.com/streamlit/us-east-1/gfc77964/#/apps/r6d2ipsor7hxoskyqm3g" target="_blank" class="dash-link">
     <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
       <path d="M2 2h5v2H4v8h8v-3h2v5H2V2zm6 0h6v6h-2V4.5L7.5 9 6 7.5 10.5 3H8V2z"/>
@@ -304,7 +304,7 @@ const DATA = [
 {n:97,  area:"Enrollment Management", title:"Projected vs. Actual NTR",          type:"KPI",       mart:"mart_enrollment_census_ntr",   dashboard:"",                                                                        status:"mart-ready"},
 {n:98,  area:"Enrollment Management", title:"Revenue per Enrolled Student",      type:"KPI",       mart:"mart_enrollment_census_ntr",   dashboard:"",                                                                        status:"mart-ready"},
 {n:99,  area:"Enrollment Management", title:"Enrollment Forecast Accuracy",      type:"KPI",       mart:"mart_enrollment_census",       dashboard:"",                                                                        status:"mart-ready"},
-{n:100, area:"Enrollment Management", title:"IPEDS Peer Comparison",             type:"KPI",       mart:"mart_ipeds_peer_comparison",   dashboard:"",                                                                        status:"mart-ready"},
+{n:100, area:"Enrollment Management", title:"IPEDS Peer Comparison",             type:"KPI",       mart:"mart_scorecard_program_outcomes", dashboard:"Benchmarking · Program Outcomes, Earnings, Debt & Repayment sections (vs. peers)", status:"complete"},
 {n:101, area:"Enrollment Management", title:"Common Data Set Metrics",           type:"KPI",       mart:"mart_ipeds_reporting",         dashboard:"",                                                                        status:"mart-ready"},
 {n:102, area:"Enrollment Management", title:"Total Headcount Trend (10-Year)",   type:"KPI",       mart:"snap_enrollment_term",         dashboard:"Trends · Headcount by Level chart (5-yr window, sourced from mart_enrollment_census not snap)", status:"alt-source"},
 {n:103, area:"Enrollment Management", title:"FTE Trend",                         type:"KPI",       mart:"snap_enrollment_term",         dashboard:"Trends · Current FTE metric (from mart_enrollment_census, not snap_enrollment_term)", status:"alt-source"},
@@ -337,6 +337,14 @@ const DATA = [
 {n:129, area:"Cross-Domain", title:"Program-Level Retention Performance",        type:"Dashboard", mart:"mart_retention_cohort_summary",dashboard:"Cross-Domain · Program Retention Performance (heatmap + latest cohort rankings)",            status:"complete"},
 {n:130, area:"Cross-Domain", title:"Age Demographics × Enrollment Intensity",    type:"Dashboard", mart:"mart_enrollment_demographics", dashboard:"Cross-Domain · Age & Enrollment Load Patterns (age trends + FT/PT by age group)",            status:"complete"},
 {n:131, area:"Cross-Domain", title:"Retention Risk Early Warning Indicators",    type:"Dashboard", mart:"mart_retention_cohort_summary",dashboard:"Cross-Domain · Retention Risk Indicators (multi-metric trend + risk scorecard)",            status:"complete"},
+// ── BENCHMARKING & PEER COMPARISON ───────────────────────────────────────
+{n:132, area:"Enrollment Management", title:"Program Earnings vs. Debt ROI",          type:"Dashboard", mart:"mart_scorecard_program_outcomes", dashboard:"Benchmarking · Program Outcomes scatter plot + Top Programs by ROI rankings",                status:"complete"},
+{n:133, area:"Enrollment Management", title:"Post-Graduation Earnings Benchmarking",  type:"Dashboard", mart:"mart_scorecard_program_outcomes", dashboard:"Benchmarking · Earnings Benchmarking (1yr/4yr/5yr progression vs. national median)",         status:"complete"},
+{n:134, area:"Enrollment Management", title:"Pell vs. Non-Pell Earnings Gap",         type:"KPI",       mart:"mart_scorecard_program_outcomes", dashboard:"Benchmarking · Earnings Benchmarking · Pell earnings gap equity analysis",                    status:"complete"},
+{n:135, area:"Enrollment Management", title:"Student Debt Burden vs. Peers",          type:"Dashboard", mart:"mart_scorecard_program_outcomes", dashboard:"Benchmarking · Debt & Affordability (median debt comparison + monthly payment burden)",     status:"complete"},
+{n:136, area:"Enrollment Management", title:"Loan Default Rate (College Scorecard)",  type:"KPI",       mart:"mart_scorecard_program_outcomes", dashboard:"Benchmarking · Repayment Success & Default Rates (4-year BBRR default rates)",                status:"complete"},
+{n:137, area:"Enrollment Management", title:"Borrower-Based Repayment Rate (BBRR)",   type:"KPI",       mart:"mart_scorecard_program_outcomes", dashboard:"Benchmarking · Repayment Success (making progress % + paid in full %)",                       status:"complete"},
+{n:138, area:"Enrollment Management", title:"Earnings-to-Debt Ratio by Program",      type:"KPI",       mart:"mart_scorecard_program_outcomes", dashboard:"Benchmarking · Program Outcomes · Top Programs by ROI (earnings-to-debt ratio rankings)",      status:"complete"},
 ];
 
 const STATUS_LABELS = {
