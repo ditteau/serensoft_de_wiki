@@ -207,7 +207,7 @@ DITTEAU_SHARED.IPEDS.*
               └── mart_ipeds_peer_comparison   (table, distribute/summaries)
 ```
 
-Peer group membership is managed in `seeds/shared/seed_ipeds_peer_group.csv` and seeded per school. RDT owns peer group content; LVP owns the file structure.
+Peer group membership is managed in per-school seed files (`seeds/{school_code}/seed_{school_code}_ipeds_peer_group.csv`). RDT owns peer group content; LVP owns the file structure. Each school's seed is enabled only when `var('school_code')` matches.
 
 ### C.4 One-Time Snowflake Setup
 
@@ -348,13 +348,13 @@ order by survey_year desc;
 
 ### C.6 Managing the Peer Group Seed
 
-The peer group is defined in `seeds/shared/seed_ipeds_peer_group.csv`. RDT owns content; LVP owns file structure.
+The peer group is defined in `seeds/{school_code}/seed_{school_code}_ipeds_peer_group.csv`. RDT owns content; LVP owns file structure. For example, Merrimack's file is `seeds/merrimack/seed_merrimack_ipeds_peer_group.csv`.
 
 **When to update:** school requests peer changes, a peer institution closes, or a new Ditteau school is onboarded.
 
 **How to update:**
-1. Edit `seed_ipeds_peer_group.csv` — verify unitids at NCES lookup
-2. `dbt seed --select seed_ipeds_peer_group`
+1. Edit `seeds/{school_code}/seed_{school_code}_ipeds_peer_group.csv` — verify unitids at NCES lookup
+2. `dbt seed --select seed_{school_code}_ipeds_peer_group` (e.g. `seed_merrimack_ipeds_peer_group`)
 3. `dbt run --select dim_institution mart_ipeds_peer_comparison`
 
 > ⚠️ Do not guess unitids. Wrong unitids produce silently incorrect peer comparisons.

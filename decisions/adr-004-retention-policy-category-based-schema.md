@@ -82,22 +82,25 @@ placeholder, not an omission. Null-safe defaults are provided by the
 
 #### Per-school retention seed
 
-`seeds/shared/seed_school_retention_policy.csv` stores the agreed retention
-periods at the grain of `(school_code, data_category)` — one row per combination.
-All five active schools × seven categories = 35 rows, all `retention_years` null
-pending G-09b.
+One CSV file per school lives in `seeds/{school_code}/seed_{school_code}_retention_policy.csv`.
+Each file is enabled only when `var('school_code')` matches, so a Merrimack build
+never loads Anselm's retention data and vice versa. Grain: one row per `data_category`
+(7 rows per school). All `retention_years` values are null pending G-09b.
 
 | Column | Purpose |
 |---|---|
-| `school_code` | Institution identifier |
 | `data_category` | One of the 7 categories |
 | `retention_years` | Integer years; null until client engagement |
 | `retention_source` | `REGULATORY_FLOOR` or `INSTITUTIONAL_POLICY` |
 | `notes` | Regulatory citations, agreed exceptions |
 
-Per-school grain is necessary because Springfield (public institution) is subject
+Per-school files are necessary because Springfield (public institution) is subject
 to Massachusetts state records schedules that may differ from the FERPA minimums
-governing private institutions.
+governing private institutions. The per-school folder pattern also prevents
+cross-institutional data from appearing in the wrong school's database.
+
+Active school files: merrimack, anselm, colby, endicott, springfield.
+New schools: `generate_school.py` emits a stub to `output/{code}/dbt_seeds/`.
 
 #### Three-tier resolution macro
 
@@ -107,8 +110,8 @@ implements a priority lookup chain:
 1. **Per-table override** — if `retention_years` in the table's source meta is
    non-null, return it. Handles tables that deviate from their category default
    (e.g., a school that retains transcripts permanently).
-2. **Category-level seed** — query `seed_school_retention_policy` keyed on
-   `(school_code, data_category)`.
+2. **Category-level seed** — query `seed_{school_code}_retention_policy` keyed on
+   `data_category` (school is implicit from the per-school seed file).
 3. **null** — not yet defined; G-09b will populate the seed.
 
 The macro is callable from governance audit models and `on-run-end` hooks.
@@ -131,8 +134,9 @@ IPEDS, and JCX sources:
       powerfaids, slate, workday)
 - [x] Add `data_category: none` and `retention_years: none` defaults to
       `macros/metadata/metadata_defaults.sql`
-- [x] Create `seeds/shared/seed_school_retention_policy.csv` (35 rows, all null)
-- [x] Add seed YAML documentation to `seeds/shared/_shared_seeds.yml`
+- [x] Create per-school retention policy seeds in `seeds/{school_code}/seed_{school_code}_retention_policy.csv`
+      (7 rows each, all null) for merrimack, anselm, colby, endicott, springfield;
+      add school `+enabled` blocks to `dbt_project.yml`
 - [x] Write `macros/metadata/get_retention_years.sql` (3-tier lookup)
 - [x] Rewrite `docs/governance/retention_policy.md` with category definitions,
       resolution chain, seed schema, and G-09b population instructions
@@ -143,9 +147,9 @@ IPEDS, and JCX sources:
 **G-09b (blocked — separate engagement)**
 - [ ] For each school, agree retention periods with client Registrar / Records
       Officer
-- [ ] Populate `retention_years` in `seed_school_retention_policy.csv`; note
-      any per-table overrides directly in source meta
-- [ ] Run `dbt seed --select seed_school_retention_policy` per school
+- [ ] Populate `retention_years` in `seeds/{school_code}/seed_{school_code}_retention_policy.csv`;
+      note any per-table overrides directly in source meta
+- [ ] Run `dbt seed --select seed_{school_code}_retention_policy` per school
 - [ ] Mark G-09b complete in `data_processing_register.csv`
 
 ---
@@ -157,13 +161,13 @@ IPEDS, and JCX sources:
 - **SIS-migration-proof:** retention obligations are expressed in terms of data
   category, not source system; a school migrating from Jenzabar CX to Banner
   requires no re-tagging of retention policy
-- **Per-school variation supported:** the seed grain `(school_code, data_category)`
-  means Springfield's state-mandated schedule can differ from Merrimack's FERPA
+- **Per-school variation supported:** each school has its own seed file, so
+  Springfield's state-mandated schedule can differ from Merrimack's FERPA
   minimum without any schema change
 - **Graceful two-phase rollout:** null placeholders are explicit and documented;
   existing models do not break because `metadata_defaults` provides null-safe
   fallbacks throughout
-- **Auditable:** a governance audit model can query `seed_school_retention_policy`
+- **Auditable:** a governance audit model can query `seed_{school_code}_retention_policy`
   and call `get_retention_years` to produce a complete school × table coverage
   report at any time
 - **Per-table override escape hatch:** the three-tier resolution lets any
@@ -181,9 +185,11 @@ IPEDS, and JCX sources:
 - **Macro requires run context:** `get_retention_years` uses `run_query()` and
   cannot be called during compilation or in source definitions — only in model
   or `on-run-end` contexts
-- **Seed is shared across schools:** `seed_school_retention_policy.csv` is a
-  single file; when one school's values are agreed and populated, the file must
-  be committed without accidentally setting values for schools not yet engaged
+- **Per-school seed files:** ~~a single shared file risked cross-school data bleeding
+  into the wrong database.~~ Resolved — seeds are now per-school
+  (`seeds/{school_code}/seed_{school_code}_retention_policy.csv`), each enabled
+  only when `var('school_code')` matches. Populating one school's values is a
+  separate file and commit; no risk of accidentally setting another school's values
 
 ---
 
@@ -202,7 +208,7 @@ IPEDS, and JCX sources:
 
 - `docs/governance/retention_policy.md` — category definitions, resolution chain,
   G-09b population instructions
-- `seeds/shared/seed_school_retention_policy.csv` — per-school retention seed
+- `seeds/{school_code}/seed_{school_code}_retention_policy.csv` — per-school retention seed (one file per school)
 - `macros/metadata/get_retention_years.sql` — resolution macro
 - `macros/metadata/metadata_defaults.sql` — null-safe defaults
 - `docs/governance/data_governance_policy.md` — G-09a/G-09b gap register entries
