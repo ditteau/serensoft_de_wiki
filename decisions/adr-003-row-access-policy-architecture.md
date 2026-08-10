@@ -128,14 +128,20 @@ This ADR also serves as a work guide. Tasks are sequenced by dependency.
 - [x] Promote `advisor_id` to `dim_student` via `enrollment_attrs` CTE
 - [x] Promote `advisor_id` to `fact_student_term` via `advisor_attrs` CTE + left join
 
-**Phase 2 — Role taxonomy and grants**
-- [ ] Define and create Snowflake roles:
-      `DITTEAU_ADMIN_ROLE`, `REGISTRAR_ROLE`, `ADVISOR_ROLE`,
-      `FA_ROLE`, `IR_ANALYST_ROLE`, `COST_CENTER_MANAGER_ROLE`
-- [ ] Add `seeds/shared/seed_rbac_role_definitions.csv` — platform-wide role
-      catalogue (name, description, default tier per domain); loaded into
+**Phase 2 — Role taxonomy and grants (complete)**
+- [x] Define and create Snowflake roles: `{CODE}_REGISTRAR_ROLE`, `{CODE}_ADVISOR_ROLE`,
+      `{CODE}_FA_ROLE`, `{CODE}_IR_ANALYST_ROLE` — added to `generate_school.py`
+      (`generate_rbac()` function) for all future schools; migration script at
+      `school_setup/migrations/add_business_roles.sql` applies them to existing schools
+- [x] Business-function roles inherit distribute access via `{CODE}_REPORTING_PROD`
+      role hierarchy — FUTURE GRANTS flow through automatically; no per-table grants
+      needed. This supersedes the `+grants:` dbt config approach: dbt grants would be
+      redundant and Jinja role names are not supported in `dbt_project.yml` grants blocks.
+- [x] Added roles to `row_access_role_map` INSERT in `generate_governance()` so they
+      are permitted by the existing binary RAP until Phase 3 replaces it
+- [x] Add `seeds/shared/seed_rbac_role_definitions.csv` — platform-wide role catalogue
+      with default access tiers per data domain; loaded into
       `DITTEAU_SHARED.governance.role_definitions` as documentation only
-- [ ] Add `+grants:` configuration to distribute-layer models in `dbt_project.yml`
 
 **Phase 3 — Per-school governance schema and mapping tables**
 - [ ] Create `{SCHOOL}_DD_{ENV}.governance` schema for each active school
