@@ -40,6 +40,7 @@
 - [Snowflake New School Setup](runbooks/snowflake-new-school.md)
 - [External Data Sources](runbooks/external-data-sources.md)
 - [Source Refresh Troubleshooting](runbooks/source-refresh.md)
+- [Row Access Policies](runbooks/row-access-policies.md)
 
 ---
 

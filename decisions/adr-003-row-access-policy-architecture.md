@@ -1,10 +1,20 @@
 # ADR-003: Domain-Scoped Row Access Policy Architecture
 
-**Status:** Proposed
+**Status:** Accepted — built and validated; enforcement not yet enabled in any PROD
 
-**Date:** 2026-08-10
+**Date:** 2026-08-10 (last updated 2026-08-12)
 
 **Author:** LVP
+
+**Deployment state as of 2026-08-12:** All governance objects exist in all nine
+`{SCHOOL}_DD_{ENV}` databases for MERRIMACK, ANSELM, and DEMEAU — 12 business
+roles, 360 `role_domain_access` tier rows, the two mapping tables, three refresh
+procedures, and nine `rap_student_academic` policies. Tier logic is validated
+end to end. Enforcement remains **off everywhere**: `enable_row_level_security`
+is `false` in DEV/TEST/PROD, so no policy is attached to any table, and
+`advisor_username_crosswalk` is unpopulated. Two gates remain before PROD
+enablement — populate the crosswalk from each school's advisor roster, and
+obtain KKM sign-off.
 
 ---
 
@@ -144,33 +154,71 @@ This ADR also serves as a work guide. Tasks are sequenced by dependency.
       `DITTEAU_SHARED.governance.role_definitions` as documentation only
 
 **Phase 3 — Per-school governance schema and mapping tables**
-- [ ] Create `{SCHOOL}_DD_{ENV}.governance` schema for each active school
-      (DDL script: `scripts/governance/create_governance_schema.sql`,
-      parameterised by `school_code` and `env`)
-- [ ] Create and seed `role_domain_access` per school from `seed_rbac_role_definitions`
+- [x] Create `{SCHOOL}_DD_{ENV}.governance` schema for each active school
+      — already created by the original school-setup run (`05_governance.sql`);
+      verified present in all 9 databases, no new DDL needed
+- [x] Create and seed `role_domain_access` per school from `seed_rbac_role_definitions`
       defaults; document any school-specific tier overrides in the seed file
-- [ ] Create `advisor_student_map` per school; write refresh procedure sourced
+      — 40 rows per school per env (360 total); no school overrides yet
+- [x] Create `advisor_student_map` per school; write refresh procedure sourced
       from `stg_jcx__students.advisor_id` (triggered on each PROD dbt build)
+      — `refresh_advisor_student_map()` created in each PROD, joining through
+      `advisor_username_crosswalk` (see Decision: advisor identity resolution)
 - [ ] Validate mapping table coverage against live advisor roster before enabling
-      enforcement
+      enforcement — **outstanding; `advisor_username_crosswalk` is empty in all
+      environments, so the SCOPED tier currently grants zero rows**
+
+Deviation from the proposed layout: the DDL lives in
+`ditteau_data_infra/school_setup/migrations/add_governance_phase3_tables.sql`
+(one-time, for the three existing schools) plus `generate_governance()`
+Section 3 in `generate_school.py` (for schools onboarded later), rather than a
+single parameterised `scripts/governance/` script. This matches the dual-track
+pattern already established by `add_business_roles.sql`.
 
 **Phase 4 — RAP functions and macro**
-- [ ] Write Snowflake RAP function `rap_student_academic` in
+- [x] Write Snowflake RAP function `rap_student_academic` in
       `scripts/governance/create_rap_functions.sql` (parameterised; deployed
       per school into their governance schema)
-- [ ] Write `macros/governance/apply_rap.sql` — post-hook wrapper resolving
+      — actual path: `migrations/add_governance_phase4_rap.sql` + generator
+      Section 4; deployed to all 9 governance schemas
+- [x] Write `macros/governance/apply_rap.sql` — post-hook wrapper resolving
       the RAP path via `var('school_code')` and `var('env')`, guarded by
       `var('enable_row_level_security')`
-- [ ] Apply macro to `dim_student`, `fact_student_term`, `fact_enrollment`
+- [x] Apply macro to `dim_student`, `fact_student_term`, `fact_enrollment`
       via `+post-hook:` in their model YAML or `dbt_project.yml` config block
-- [ ] Test: run as `ADVISOR_ROLE` user — confirm only advisee rows returned
-- [ ] Test: run as `REGISTRAR_ROLE` user — confirm full row access
-- [ ] Test: run as `IR_ANALYST_ROLE` user — confirm zero row access
+      — had to go in `dbt_project.yml`: Jinja in a model-YAML `config:` block is
+      evaluated at parse time, before project macros load, so `{{ apply_rap() }}`
+      there fails with `'apply_rap' is undefined`
+- [x] Test: run as `ADVISOR_ROLE` user — confirm only advisee rows returned
+- [x] Test: run as `REGISTRAR_ROLE` user — confirm full row access
+- [x] Test: run as `IR_ANALYST_ROLE` user — confirm zero row access
       (aggregated-only tier)
 
+All three tests passed on 2026-08-12 against DEMEAU DEV, plus three additional
+cases: SYSADMIN bypass (100/100), `FA_ROLE` SCOPED (5/100), and an unmapped role
+falling through to default-deny (0/100). Method and constraints are recorded in
+`runbooks/row-access-policies.md`.
+
+Two corrections came out of Phase 4 and are worth recording:
+
+- **Policy signature type.** The policy was first written as
+  `(row_student_id VARCHAR)`, which cannot attach to any target column —
+  `dim_student.student_id` is `NUMBER(38,5)`, `fact_student_term.student_id` and
+  `fact_enrollment.student_id` are `NUMBER(_,0)`. Snowflake matches policy
+  signatures on type *family*, not precision/scale (verified empirically), so a
+  single `NUMBER(38,0)` signature attaches to all of them and no model needed
+  re-typing. `advisor_student_map.student_id` and
+  `advisor_username_crosswalk.advisor_id` were retyped to `NUMBER(38,0)` to match
+  (`add_governance_phase4b_retype_student_id.sql`).
+- **`fact_enrollment` had no natural student key.** Only the surrogate
+  `enrollment_student_key` existed; attaching the policy to it would have
+  compiled and then silently matched nothing, returning zero rows for every
+  SCOPED user. `a.student_id` was already available from the
+  `int_course_registrations` join and is now selected.
+
 **Phase 5 — Documentation and sign-off**
-- [ ] Update `data_governance_policy.md` to mark G-03 in progress / complete
-- [ ] Add runbook: `runbooks/row-access-policies.md`
+- [x] Update `data_governance_policy.md` to mark G-03 in progress / complete
+- [x] Add runbook: `runbooks/row-access-policies.md`
       (how to add a user to advisor_student_map, how to test RAP as a role,
       how to deploy to a new school)
 - [ ] KKM sign-off before enabling in any PROD environment

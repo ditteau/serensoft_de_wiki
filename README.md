@@ -15,6 +15,7 @@ Snowflake architecture, ETL runbooks, and engineering decisions for the Ditteau 
 | Look up a source system schema | [Source Systems](source-systems/README.md) |
 | Log an architectural decision | [ADR Template](decisions/adr-template.md) |
 | Review data quality standards | [DQ Framework](governance/dq-framework.md) |
+| Manage row-level access or advisor rosters | [Row Access Policies](runbooks/row-access-policies.md) |
 
 ---
 
