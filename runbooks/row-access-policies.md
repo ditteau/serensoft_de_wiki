@@ -14,6 +14,7 @@ Operational guide for the domain-scoped Row Access Policy (RAP) architecture def
 - [C. Managing Advisor Assignments](#c-managing-advisor-assignments)
 - [D. Changing a Role's Access Tier](#d-changing-a-roles-access-tier)
 - [E. Testing a RAP as a Role](#e-testing-a-rap-as-a-role)
+  - [E.4 Standing DEV grants for DEMEAU](#e4-standing-dev-grants-for-demeau)
 - [F. Enabling Enforcement in PROD](#f-enabling-enforcement-in-prod)
 - [G. Deploying to a New School](#g-deploying-to-a-new-school)
 - [H. Adding a New Domain RAP](#h-adding-a-new-domain-rap)
@@ -100,7 +101,11 @@ As of **2026-08-12**:
 | `enable_row_level_security` | `false` in DEV, TEST, and PROD |
 | `advisor_username_crosswalk` | **Empty in all 9 databases** |
 
-Enforcement is therefore inactive platform-wide. Two gates remain: load each school's advisor roster ([C](#c-managing-advisor-assignments)) and obtain KKM sign-off.
+Enforcement is therefore inactive platform-wide. Two gates remain: load each school's advisor roster ([C](#c-managing-advisor-assignments)) and obtain sign-off from KKM (Kelly, Director of Data Governance).
+
+A third prerequisite sits behind the roster gate and is easy to miss: **as of 2026-08-13 no school staff have Snowflake accounts.** All 12 business roles show `assigned_to_users = 0`, and the account holds four human users, all Serensoft staff. `advisor_username_crosswalk` maps `advisor_id` to a Snowflake `login_name`, so there is nothing to map to yet. Enforcement would work if enabled today, but would not govern anyone.
+
+This also constrains the design: the `SCOPED` predicate keys on `CURRENT_USER()`, so it only distinguishes advisors who each hold their own Snowflake login. If school access is ever delivered through a BI tool using a single shared service account, every advisor collapses into one identity and `SCOPED` silently returns that account's mapped rows to everybody. Confirm the access model before relying on it.
 
 Default tiers as seeded, from `seed_rbac_role_definitions.csv`:
 
@@ -251,7 +256,8 @@ ALTER TABLE DEMEAU_DD_DEV.governance.rap_test_students
     ADD ROW ACCESS POLICY DEMEAU_DD_DEV.governance.rap_student_academic
     ON (student_id);
 
--- Temporary DEV access for the business roles
+-- DEV access for the business roles.
+-- These are already in place for DEMEAU (see E.4) — included here for other schools.
 GRANT USAGE ON WAREHOUSE DEMEAU_TRANSFORM_DEV TO ROLE DEMEAU_ADVISOR_ROLE;
 GRANT USAGE ON DATABASE DEMEAU_DD_DEV          TO ROLE DEMEAU_ADVISOR_ROLE;
 GRANT USAGE ON SCHEMA DEMEAU_DD_DEV.governance TO ROLE DEMEAU_ADVISOR_ROLE;
@@ -301,6 +307,37 @@ WHERE advisor_id = 999001;
 
 Drop the fixture *before* re-running any script that does `CREATE OR REPLACE ROW ACCESS POLICY` — Snowflake refuses to replace a policy that is still attached to something (`error 003531: cannot be dropped/replaced as it is associated with one or more entities`).
 
+Note that the cleanup above deliberately does **not** revoke the DEV grants from [E.2](#e2-scratch-table-test-procedure). See [E.4](#e4-standing-dev-grants-for-demeau).
+
+### E.4 Standing DEV grants for DEMEAU
+
+The DEMEAU business roles have been left holding DEV access so this test is repeatable without re-granting each time. Deliberate, not drift — but it is a divergence from what `generate_school.py` produces, so it will not exist for other schools:
+
+| Role | Standing grants in DEV |
+|------|------------------------|
+| `DEMEAU_REGISTRAR_ROLE` | USAGE on `DEMEAU_TRANSFORM_DEV`, `DEMEAU_DD_DEV`, `DEMEAU_DD_DEV.GOVERNANCE` |
+| `DEMEAU_ADVISOR_ROLE` | same |
+| `DEMEAU_FA_ROLE` | same |
+| `DEMEAU_IR_ANALYST_ROLE` | same |
+| `DEMEAU_READ_DEV` | USAGE on `DEMEAU_TRANSFORM_DEV`, `DEMEAU_DD_DEV.GOVERNANCE` |
+
+Granted 2026-08-12 by SYSADMIN. The `SELECT` on the scratch table is not standing — it disappears with the table each time it is dropped.
+
+This is safe because DEMEAU is synthetic demo data and the grants are read-only in DEV. **Do not copy this pattern to a school holding real student data** — there, grant DEV access only for the duration of a test and revoke it afterwards:
+
+```sql
+USE ROLE SYSADMIN;
+REVOKE USAGE ON SCHEMA {SCHOOL}_DD_DEV.governance FROM ROLE {SCHOOL}_ADVISOR_ROLE;
+REVOKE USAGE ON DATABASE {SCHOOL}_DD_DEV          FROM ROLE {SCHOOL}_ADVISOR_ROLE;
+REVOKE USAGE ON WAREHOUSE {SCHOOL}_TRANSFORM_DEV  FROM ROLE {SCHOOL}_ADVISOR_ROLE;
+```
+
+To audit what a role actually holds at any point:
+
+```sql
+SHOW GRANTS TO ROLE DEMEAU_ADVISOR_ROLE;
+```
+
 ---
 
 ## F. Enabling Enforcement in PROD
@@ -310,7 +347,7 @@ Pre-flight, per school:
 - [ ] `advisors_unmapped = 0` from the query in [C.4](#c4-coverage-check-before-enabling-enforcement)
 - [ ] Tier assignments in `role_domain_access` reviewed against the school's actual org chart
 - [ ] Scratch-table test passed in that school's DEV
-- [ ] KKM sign-off obtained (ADR-003 Phase 5 gate)
+- [ ] Sign-off obtained from KKM (Kelly, Director of Data Governance) — ADR-003 Phase 5 gate. This is the formal approval to enforce row-level access on live student data; get it in writing before the flag is flipped, not after.
 - [ ] A rollback window agreed — enforcement changes what dashboards show
 
 Then run a PROD build with the flag on:

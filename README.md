@@ -37,7 +37,7 @@ Snowflake architecture, ETL runbooks, and engineering decisions for the Ditteau 
 |---|---|---|---|---|
 | LVP | Laurie | Architecture & Strategic Planning | [laurie@serensoft.com](mailto:laurie@serensoft.com) | [DM](slack://user?team=T0YH9MKJR&id=U113UC6AZ) |
 | WDT | Will | Systems & Security | [will@serensoft.com](mailto:will@serensoft.com) | [DM](slack://user?team=T0YH9MKJR&id=U0YGZ6BQU) |
-| KKM | Kelly | Data Governance & Quality | [kelly@serensoft.com](mailto:kelly@serensoft.com) | [DM](slack://user?team=T0YH9MKJR&id=U02Q1KU9E3B) |
+| KKM | Kelly | Director of Data Governance & Quality | [kelly@serensoft.com](mailto:kelly@serensoft.com) | [DM](slack://user?team=T0YH9MKJR&id=U02Q1KU9E3B) |
 | RDT | Richard | Strategic Placement & Marketing | [rdt@serensoft.com](mailto:rdt@serensoft.com) | [DM](slack://user?team=T0YH9MKJR&id=U0YH9E2SK) |
 
 ---

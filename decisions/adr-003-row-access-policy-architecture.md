@@ -14,7 +14,18 @@ end to end. Enforcement remains **off everywhere**: `enable_row_level_security`
 is `false` in DEV/TEST/PROD, so no policy is attached to any table, and
 `advisor_username_crosswalk` is unpopulated. Two gates remain before PROD
 enablement — populate the crosswalk from each school's advisor roster, and
-obtain KKM sign-off.
+obtain sign-off from KKM (Kelly, Director of Data Governance).
+
+**A prerequisite behind the roster gate:** as of 2026-08-13 no school staff hold
+Snowflake accounts. All 12 business roles report `assigned_to_users = 0` and the
+account contains four human users, all Serensoft. Because
+`advisor_username_crosswalk` maps `advisor_id` to a Snowflake `login_name`, the
+crosswalk cannot be populated until staff are provisioned — this is a
+provisioning dependency, not a data-entry task. It also bounds the design: the
+`SCOPED` predicate reads `CURRENT_USER()`, so it only separates advisors who each
+hold an individual login. Delivering school access through a BI tool on a shared
+service account would collapse all advisors into one identity and break the tier.
+Confirm the intended access model before enabling enforcement.
 
 ---
 
@@ -221,7 +232,12 @@ Two corrections came out of Phase 4 and are worth recording:
 - [x] Add runbook: `runbooks/row-access-policies.md`
       (how to add a user to advisor_student_map, how to test RAP as a role,
       how to deploy to a new school)
-- [ ] KKM sign-off before enabling in any PROD environment
+- [ ] Sign-off from KKM (Kelly, Director of Data Governance) before enabling in any
+      PROD environment
+- [ ] Provision Snowflake accounts for school staff and assign the business roles —
+      blocks the advisor roster load, and therefore the SCOPED tier
+- [ ] Confirm the access model is per-user rather than a shared service account,
+      since the SCOPED predicate depends on `CURRENT_USER()`
 
 ---
 
