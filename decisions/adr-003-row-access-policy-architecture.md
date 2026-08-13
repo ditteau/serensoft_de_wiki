@@ -160,9 +160,15 @@ This ADR also serves as a work guide. Tasks are sequenced by dependency.
       redundant and Jinja role names are not supported in `dbt_project.yml` grants blocks.
 - [x] Added roles to `row_access_role_map` INSERT in `generate_governance()` so they
       are permitted by the existing binary RAP until Phase 3 replaces it
-- [x] Add `seeds/shared/seed_rbac_role_definitions.csv` — platform-wide role catalogue
-      with default access tiers per data domain; loaded into
-      `DITTEAU_SHARED.governance.role_definitions` as documentation only
+- [~] Add `seeds/shared/seed_rbac_role_definitions.csv` — platform-wide role catalogue
+      with default access tiers per data domain; ~~loaded into
+      `DITTEAU_SHARED.governance.role_definitions` as documentation only~~
+      — **partially complete.** The CSV exists in the repo and was used as the source
+      for the per-school `role_domain_access` seeding, but
+      `DITTEAU_SHARED.GOVERNANCE.ROLE_DEFINITIONS` **does not exist** in Snowflake
+      (verified 2026-08-13). Nothing was ever loaded there. Either load it or drop the
+      claim; a reference table cited in the Decision section but absent from the account
+      is worse than no reference table.
 
 **Phase 3 — Per-school governance schema and mapping tables**
 - [x] Create `{SCHOOL}_DD_{ENV}.governance` schema for each active school
@@ -171,10 +177,18 @@ This ADR also serves as a work guide. Tasks are sequenced by dependency.
 - [x] Create and seed `role_domain_access` per school from `seed_rbac_role_definitions`
       defaults; document any school-specific tier overrides in the seed file
       — 40 rows per school per env (360 total); no school overrides yet
-- [x] Create `advisor_student_map` per school; write refresh procedure sourced
-      from `stg_jcx__students.advisor_id` (triggered on each PROD dbt build)
+- [~] Create `advisor_student_map` per school; ~~write refresh procedure sourced
+      from `stg_jcx__students.advisor_id` (triggered on each PROD dbt build)~~
       — `refresh_advisor_student_map()` created in each PROD, joining through
-      `advisor_username_crosswalk` (see Decision: advisor identity resolution)
+      `advisor_username_crosswalk` (see Decision: advisor identity resolution).
+      **The tables are deployed; the procedure does not run.** First execution on
+      2026-08-13 failed:
+      `Object 'DEMEAU_DD_PROD.DETERGE.STG_JCX__STUDENTS' does not exist`.
+      Root cause is not the procedure — **no PROD database has ever been built.**
+      All three hold only `deposit` and `governance`; there is no `deterge` or
+      `distribute` layer in any PROD. The procedure is PROD-only by design and
+      targets a layer that does not exist there, so it could never have succeeded.
+      It was marked complete on the basis of being created, never called.
 - [ ] Validate mapping table coverage against live advisor roster before enabling
       enforcement — **outstanding; `advisor_username_crosswalk` is empty in all
       environments, so the SCOPED tier currently grants zero rows**
@@ -200,6 +214,18 @@ pattern already established by `add_business_roles.sql`.
       — had to go in `dbt_project.yml`: Jinja in a model-YAML `config:` block is
       evaluated at parse time, before project macros load, so `{{ apply_rap() }}`
       there fails with `'apply_rap' is undefined`
+
+      ~~Marked complete 2026-08-12 on the basis that the macro and hooks were
+      written and wired.~~ **They were, and the macro did not work.** It resolved
+      the policy path as `var('school_code') ~ '_DD_' ~ var('env')`, and there is
+      no `env` var in this project — not in `dbt_project.yml`, not supplied by any
+      `run_<school>_dev.sh`. Enforcement would have failed on the first PROD model
+      with `Required var 'env' not found`. The defect was undetectable because the
+      macro body only executes when `enable_row_level_security` is true, which it
+      had never been in any environment. Fixed in Phase 6 to use `target.database`,
+      which resolves from `profiles.yml` rather than being reconstructed from parts
+      that may not exist. Attachment observed for the first time on 2026-08-13
+      against `DEMEAU_DD_DEV` — see the Phase 6 validation record.
 - [x] Test: run as `ADVISOR_ROLE` user — confirm only advisee rows returned
 - [x] Test: run as `REGISTRAR_ROLE` user — confirm full row access
 - [x] Test: run as `IR_ANALYST_ROLE` user — confirm zero row access
@@ -240,6 +266,108 @@ Two corrections came out of Phase 4 and are worth recording:
       since the SCOPED predicate depends on `CURRENT_USER()`
 
 ---
+
+### Validation Methodology — added 2026-08-13
+
+Four criteria in this checklist were marked complete on the basis that code had been
+**written and wired**, not that it had been **observed to work**. Three of the four
+could only fail at execution, and nothing executed them.
+
+| Item | Marked on | Actual state when tested |
+|---|---|---|
+| `apply_rap()` post-hooks (Phase 4) | Macro written, hooks wired | Used a non-existent `var('env')`; would fail on first PROD model |
+| `refresh_advisor_student_map()` (Phase 3) | Procedure created | Fails on first call — no PROD `deterge` layer exists |
+| `DITTEAU_SHARED.governance.role_definitions` (Phase 2) | Seed CSV committed | Table never created in Snowflake |
+| `enable_masking_policies` (referenced in model docs, not this checklist) | Flag defined, docs written | Flag is inert — no code reads it; zero masking policies deployed |
+
+The common cause is that each sat behind something that prevented execution: a feature
+flag that has never been true, a PROD environment that has never been built, or a
+manual step nobody ran. **A feature flag guarantees its own code is untested.**
+
+Consequences adopted going forward:
+
+- A criterion is not complete until its **effect** is observed. For a policy, that
+  means querying `information_schema.policy_references` and seeing the attachment —
+  not that the hook ran without error. For a procedure, calling it. For a table,
+  selecting from it in the target account.
+- Anything gated on `enable_row_level_security` or `enable_masking_policies` must be
+  exercised on `DEMEAU_DD_DEV` with the flag temporarily true, then flipped back.
+  DEMEAU's CX share is de-identified and authorised for demonstration use, which makes
+  it the correct place to do this.
+- Deployment assertions belong in `tests/governance/` as queries against deployed
+  state. Note that a dbt test alone would not have caught three of the four above;
+  they need assertions about Snowflake objects, not about data quality.
+- **No PROD database has ever been built.** All three hold only `deposit` and
+  `governance`. `MERRIMACK_DD_TEST` and `ANSELM_DD_TEST` are built; `DEMEAU_DD_TEST` is
+  not. Any statement in this ADR about PROD behaviour is therefore projection, not
+  observation, and should be read that way until a PROD build exists.
+
+---
+
+### Constraint — conformed dimensions can belong to only one domain
+
+Snowflake permits **one row access policy per table**. Conformed dimensions are shared
+across domains, so this forces a single domain owner per table — and that ownership
+determines the tier every role gets on that table, regardless of the role's tier in any
+other domain.
+
+`dim_student` is owned by `student_academic`. It therefore cannot also carry
+`rap_financial_aid`, so financial-aid access to student demographics is **not
+expressible at dimension grain**. A role's `financial_aid` tier has no effect on what it
+reads from `dim_student`; only its `student_academic` tier does.
+
+This is not a limitation to work around — a second mechanism to express it would
+reintroduce exactly the parallel-lookup problem this ADR removes. It is a constraint to
+design the tier grid against.
+
+**The grid must therefore be read across rows, not down columns.** It was authored
+domain by domain, which is how the defect below survived review.
+
+#### Defect found 2026-08-13: FA_ROLE saw zero students
+
+`FA_ROLE` held `FULL` on `financial_aid` and `SCOPED` on `student_academic`. `SCOPED`
+resolves through `advisor_student_map`, populated from advisor assignments — and
+financial-aid counselors are not advisors. Measured on DEMEAU DEV with policies live:
+
+| Query as `FA_ROLE` | Rows |
+|---|---|
+| `fact_aid_award` | 204 |
+| `dim_student` | **0** |
+| the two joined on `student_key` | **0** |
+
+Every aid analysis touching demographics returns nothing, **silently** — a row access
+policy yields empty results, not errors. `mart_aid_leveraging`, aid-by-ethnicity and
+aid-by-first-generation would all have been unbuildable for the role that exists to use
+them.
+
+`SCOPED` was never a deliberate policy choice here. It is the same value
+`ADVISOR_ROLE` carries, reached through a mechanism built for advising. The grid
+expressed a mechanism, not an intent.
+
+**Correction (KKM-approved 2026-08-13): `FA_ROLE` → `FULL` on `student_academic`.** No
+caseload relationship exists to scope to: a student's aid record originates from their
+own FAFSA filing, not from an advisor assignment, so the set of students an FA counselor
+legitimately touches is closer to "all of them" than to any subset the data can express.
+
+What was approved is a **widening of PII access** — under `FULL`, `FA_ROLE` reads all of
+`dim_student`. Row access and column masking are separable: `FULL` row access plus masked
+SSN/DOB may cover the role's work, and that is the smaller grant. Resolve it as part of
+work item F rather than assuming `FULL` implies unmasked.
+
+The other three business roles were checked across the grid at the same time and are
+sound: `REGISTRAR_ROLE` is `FULL` in both domains it touches, `ADVISOR_ROLE` has access
+in one domain only, and `IR_ANALYST_ROLE` is `AGGREGATED` in both — uniformly zero at row
+grain, which is a coherent marts-only posture rather than a mismatch.
+
+> **Note for IR_ANALYST_ROLE:** `mart_student_at_risk`, `mart_academic_progress` and
+> `mart_registration_holds` now carry `rap_student_academic`, so `AGGREGATED` roles read
+> **zero rows** from them. That is correct — they are student-grain, not pre-aggregated —
+> but it is a behaviour change. Anything IR needs from those marts must come from a
+> genuinely aggregated model.
+
+**Follow-up owed:** a test asserting cross-domain tier coherence, so a role cannot hold
+non-zero access in one domain while resolving to zero rows in a conformed dimension it
+must join. Reading each role's row is currently a manual review step.
 
 ### Consequences
 

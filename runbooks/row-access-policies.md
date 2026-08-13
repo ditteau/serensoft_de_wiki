@@ -14,8 +14,11 @@ Operational guide for the domain-scoped Row Access Policy (RAP) architecture def
 - [C. Managing Advisor Assignments](#c-managing-advisor-assignments)
 - [D. Changing a Role's Access Tier](#d-changing-a-roles-access-tier)
 - [E. Testing a RAP as a Role](#e-testing-a-rap-as-a-role)
-  - [E.4 Standing DEV grants for DEMEAU](#e4-standing-dev-grants-for-demeau)
+  - [E.4 Policy evaluation cost](#e4-policy-evaluation-cost)
+  - [E.5 Standing DEV grants for DEMEAU](#e5-standing-dev-grants-for-demeau)
 - [F. Enabling Enforcement in PROD](#f-enabling-enforcement-in-prod)
+  - [F.0 The run scripts silently discard any var you pass](#f0-the-run-scripts-silently-discard-any-var-you-pass)
+  - [F.0.1 Verify attachment, never infer it](#f01-verify-attachment-never-infer-it)
 - [G. Deploying to a New School](#g-deploying-to-a-new-school)
 - [H. Adding a New Domain RAP](#h-adding-a-new-domain-rap)
 - [I. Troubleshooting](#i-troubleshooting)
@@ -59,23 +62,52 @@ Roles absent from `role_domain_access` fall through the policy's `ELSE` to `FALS
 
 ```sql
 CURRENT_ROLE() IN ('ACCOUNTADMIN', 'SYSADMIN')     -- bypass
-OR CASE (SELECT access_tier
-         FROM role_domain_access
-         WHERE role_name = CURRENT_ROLE()
-           AND data_domain = 'student_academic')
+OR CASE COALESCE(
+     -- user-keyed tier: the only path that resolves inside Streamlit
+     (SELECT access_tier FROM user_domain_access
+       WHERE snowflake_username = CURRENT_USER()
+         AND data_domain = 'student_academic'
+         AND (expiration_date IS NULL OR expiration_date >= CURRENT_DATE())),
+     -- role-keyed tier: direct SQL and per-user BI connections
+     (SELECT access_tier FROM role_domain_access
+       WHERE role_name = CURRENT_ROLE()
+         AND data_domain = 'student_academic'))
      WHEN 'FULL'   THEN TRUE
      WHEN 'SCOPED' THEN EXISTS (SELECT 1 FROM advisor_student_map
                                 WHERE snowflake_username = CURRENT_USER()
                                   AND student_id = row_student_id
                                   AND (expiration_date IS NULL
                                        OR expiration_date >= CURRENT_DATE()))
+     WHEN 'AGGREGATED' THEN FALSE
+     WHEN 'NONE'       THEN FALSE
      ELSE FALSE
    END
 ```
 
-Note the split: the **tier** comes from `CURRENT_ROLE()`, the **predicate** from `CURRENT_USER()`. Two advisors sharing `{CODE}_ADVISOR_ROLE` see different rows.
+Three things to read out of this:
 
-### A.5 Attachment is owned by dbt
+**Tier resolves user-first, then role.** A `user_domain_access` row always wins over a `role_domain_access` row — that is what `COALESCE` ordering means, and it is deliberate. An expired user row is ignored and resolution falls back to the role tier.
+
+**The user-keyed path exists because of Streamlit.** Under owner's-rights execution, `CURRENT_ROLE()` returns the app owner role for every viewer, so the role-keyed path cannot be trusted there. `{CODE}_STREAMLIT_OWNER_{ENV}` is deliberately absent from `role_domain_access` so that path dead-ends, forcing tier to come from `user_domain_access`. That absence is enforced by `tests/governance/assert_no_app_owner_in_role_domain_access.sql`.
+
+**Tier comes from identity; the predicate comes from the user.** Two advisors sharing `{CODE}_ADVISOR_ROLE` see different rows, because `SCOPED` joins `advisor_student_map` on `CURRENT_USER()`.
+
+Both tier subqueries are **uncorrelated** — they never reference the row parameter — so Snowflake evaluates them once per query rather than per row. The `SCOPED` branch is the exception and *is* row-correlated. See [E.4](#e4-policy-evaluation-cost).
+
+### A.5 Known environment asymmetries
+
+DEV, TEST and PROD are **not** symmetric. Each of these has already caused a wrong assumption during this work, so they are recorded here rather than rediscovered a fourth time.
+
+| Asymmetry | Consequence |
+|---|---|
+| `{CODE}_ANALYTICS_PROD` exists; there is no `ANALYTICS_DEV` or `ANALYTICS_TEST` | Anything specified as "grant usage on `{CODE}_ANALYTICS_PROD`" only works in PROD. DEV and TEST have `{CODE}_TRANSFORM_{ENV}` as their only warehouse — that is what `STREAMLIT_OWNER_DEV` and `_TEST` were granted. |
+| Future grants on `DISTRIBUTE` go to `REPORTING_PROD` in **PROD only**; DEV and TEST have them for `TRANSFORM` only | `AGGREGATED` roles automatically hold `select` on every distribute model in PROD and **nothing** in DEV. This is why testing in DEV needs hand-granted access ([E.5](#e5-standing-dev-grants-for-demeau)) and why no dbt `+grants:` config is needed in PROD. |
+| `refresh_advisor_student_map()` exists in **PROD only** | DEV and TEST have `advisor_student_map` as a table but no procedure. Populate those by hand when testing. |
+| The business roles hold `{CODE}_ANALYTICS_PROD` by default and no DEV compute | DEV testing requires temporary or standing grants; see [E.5](#e5-standing-dev-grants-for-demeau). |
+
+The pattern behind all four: the school-setup scripts provision PROD as the real environment and DEV/TEST as thinner development copies. Assume nothing carries across without checking.
+
+### A.6 Attachment is owned by dbt
 
 The policy is created by infra scripts but attached by dbt, via the `apply_rap()` post-hook on `dim_student`, `fact_student_term`, and `fact_enrollment`. The hook is a no-op unless `enable_row_level_security` is `true`.
 
@@ -257,7 +289,7 @@ ALTER TABLE DEMEAU_DD_DEV.governance.rap_test_students
     ON (student_id);
 
 -- DEV access for the business roles.
--- These are already in place for DEMEAU (see E.4) — included here for other schools.
+-- These are already in place for DEMEAU (see E.5) — included here for other schools.
 GRANT USAGE ON WAREHOUSE DEMEAU_TRANSFORM_DEV TO ROLE DEMEAU_ADVISOR_ROLE;
 GRANT USAGE ON DATABASE DEMEAU_DD_DEV          TO ROLE DEMEAU_ADVISOR_ROLE;
 GRANT USAGE ON SCHEMA DEMEAU_DD_DEV.governance TO ROLE DEMEAU_ADVISOR_ROLE;
@@ -307,9 +339,33 @@ WHERE advisor_id = 999001;
 
 Drop the fixture *before* re-running any script that does `CREATE OR REPLACE ROW ACCESS POLICY` — Snowflake refuses to replace a policy that is still attached to something (`error 003531: cannot be dropped/replaced as it is associated with one or more entities`).
 
-Note that the cleanup above deliberately does **not** revoke the DEV grants from [E.2](#e2-scratch-table-test-procedure). See [E.4](#e4-standing-dev-grants-for-demeau).
+Note that the cleanup above deliberately does **not** revoke the DEV grants from [E.2](#e2-scratch-table-test-procedure). See [E.5](#e5-standing-dev-grants-for-demeau).
 
-### E.4 Standing DEV grants for DEMEAU
+### E.4 Policy evaluation cost
+
+Measured 2026-08-13 on DEMEAU DEV, scanning a 89,122-row copy of `fact_student_term` as `DEMEAU_REGISTRAR_ROLE` (tier `FULL`, so the `CASE` resolves through the tier lookup rather than short-circuiting on the SYSADMIN bypass). Five repetitions, `USE_CACHED_RESULT = FALSE`.
+
+| Condition | Median | Min | Max |
+|---|---|---|---|
+| No policy attached | 352 ms | 240 | 418 |
+| Phase 4 body — one scalar subquery | 501 ms | 360 | 576 |
+| Phase 6 body — `COALESCE` of two | 240 ms | 227 | 333 |
+
+**Read this as "no measurable difference," not as a speedup.** Phase 6 cannot genuinely be faster than no policy at all; the ordering is an artifact. Run-to-run variance on the unprotected baseline alone spans 178 ms, which is wider than any gap between conditions, so the policy overhead sits below this measurement's noise floor.
+
+The mechanism explains why. Both tier subqueries are **uncorrelated** — they reference `CURRENT_USER()`, `CURRENT_ROLE()` and a literal domain string, never the row parameter. Snowflake evaluates them once per query, not once per row. Going from one subquery to two therefore adds a constant, not a per-row cost, and at any realistic table size that constant disappears into query overhead.
+
+Consequence: **the fallback governance view unioning both tier tables is unnecessary.** It was specified as the remedy if the regression proved material. It did not.
+
+**This conclusion is scoped to the *uncorrelated* tier lookups, and the `SCOPED` branch is already the exception.** Its `EXISTS` against `advisor_student_map` joins on `row_student_id`, so it *is* row-correlated. It did not appear in these numbers because the measurement ran as a `FULL` role, which resolves at the first `WHEN` and never reaches the `SCOPED` branch.
+
+> **Before enforcement goes live, re-time as `DEMEAU_ADVISOR_ROLE` against `fact_student_term`.** That is the path where per-row cost is real, and it is the path advisors will actually use every day. Nothing above tells you what it costs.
+
+Use `EXECUTION_TIME` from `QUERY_HISTORY` rather than client wall clock for that measurement — wall clock here includes connection and result round-trip, which is part of why the variance swamped the signal.
+
+**On the fallback governance view — considered and ruled out, not overlooked.** The Phase 6 plan specified a view unioning `user_domain_access` and `role_domain_access` with a precedence column, queried once, as the remedy if two subqueries proved materially more expensive than one. It is unnecessary *because* the tier lookups are uncorrelated: a second uncorrelated subquery adds a constant, not a per-row cost, so collapsing two into one saves a constant that is already invisible. If a future slowdown appears on the tier lookup path, that view is the known remedy and this is the reason it was not built pre-emptively. Do not reinvent it without first confirming the lookups are still uncorrelated — if one becomes row-correlated, the view solves a different and much larger problem.
+
+### E.5 Standing DEV grants for DEMEAU
 
 The DEMEAU business roles have been left holding DEV access so this test is repeatable without re-granting each time. Deliberate, not drift — but it is a divergence from what `generate_school.py` produces, so it will not exist for other schools:
 
@@ -342,6 +398,65 @@ SHOW GRANTS TO ROLE DEMEAU_ADVISOR_ROLE;
 
 ## F. Enabling Enforcement in PROD
 
+### F.0 The run scripts silently discard any var you pass
+
+> ⚠️ **You cannot enable this flag through `scripts/run_<school>_dev.sh`.** Every script is shaped `dbt "$@" --target … --vars '{…}'` — its own `--vars` comes **after** `"$@"`, and dbt honours only the last `--vars`. Anything you pass is dropped without warning.
+
+This produced a false pass on 2026-08-13. A full DEMEAU build invoked as
+`run_demeau_dev.sh build --vars '{"enable_row_level_security": true}'` returned
+`PASS=1213 WARN=16 ERROR=0` — and attached nothing, because the flag was still false and
+`apply_rap()` no-opped. The build looked like successful validation and proved nothing.
+
+To pass an extra var, replicate the school's var block and merge the key in, invoking
+`dbt` directly. Or temporarily edit `dbt_project.yml` and revert. Do not assume a clean
+build means the flag took effect — **confirm the flag reached dbt by observing its
+effect**, per F.0.1.
+
+### F.0.1 Verify attachment, never infer it
+
+A clean build proves the hook did not raise. It does not prove attachment. Always
+observe:
+
+```sql
+SELECT POLICY_NAME, REF_ENTITY_NAME, REF_ENTITY_DOMAIN, REF_ARG_COLUMN_NAMES
+FROM TABLE({SCHOOL}_DD_{ENV}.INFORMATION_SCHEMA.POLICY_REFERENCES(
+    POLICY_NAME => '{SCHOOL}_DD_{ENV}.governance.rap_student_academic'));
+```
+
+Note the column is `REF_ARG_COLUMN_NAMES` (a JSON array), not `ref_column_name`.
+
+**Validation record — DEMEAU DEV, 2026-08-13.** First time the Phase 4 attachment path
+ever executed. DEMEAU's CX share is de-identified and authorised for demonstration use,
+which is what makes it the correct place to run this.
+
+| Policy | Attached to | On column |
+|---|---|---|
+| `RAP_STUDENT_ACADEMIC` | `DIM_STUDENT` | `STUDENT_ID` |
+| `RAP_STUDENT_ACADEMIC` | `FACT_ENROLLMENT` | `STUDENT_ID` |
+| `RAP_STUDENT_ACADEMIC` | `FACT_STUDENT_TERM` | `STUDENT_ID` |
+
+Row-correlated `SCOPED` path measured against the live attachment on
+`fact_student_term` (89,122 rows, 500 advisee mappings, 5 reps, cache off):
+
+| Tier | Median | Rows visible |
+|---|---|---|
+| `FULL` (uncorrelated path only) | 623 ms | 89,122 |
+| `SCOPED` (row-correlated `EXISTS`) | 493 ms | 3,306 |
+
+**The functional result is the finding, not the timing.** `SCOPED` correctly filtered
+89,122 rows to the 3,306 belonging to the mapped advisees — the row-correlated predicate
+works at scale against a real fact table. The timing cannot isolate policy overhead
+because `SCOPED` returns 27× less data and therefore aggregates less; the two effects run
+opposite directions. What it does establish is that there is **no material regression** at
+this volume. Re-measure with `EXECUTION_TIME` from `QUERY_HISTORY` if the number ever
+gates a decision.
+
+After validating, the flag was removed and detachment confirmed — `POLICY_REFERENCES`
+returned no rows. A normal `table`-materialisation rebuild detaches, because
+`CREATE OR REPLACE TABLE` drops policy attachments.
+
+### F.1 Pre-flight
+
 Pre-flight, per school:
 
 - [ ] `advisors_unmapped = 0` from the query in [C.4](#c4-coverage-check-before-enabling-enforcement)
@@ -372,7 +487,7 @@ FROM TABLE(MERRIMACK_DD_PROD.information_schema.policy_references(
 
 To make enforcement permanent, set `enable_row_level_security: true` in the PROD target's vars rather than passing it per-run — otherwise the next scheduled build detaches the policy, because `apply_rap()` becomes a no-op and the table is rebuilt without it.
 
-### F.1 Rollback
+### F.2 Rollback
 
 ```bash
 # Rebuild without the flag; apply_rap() no-ops and the policy is not reattached
