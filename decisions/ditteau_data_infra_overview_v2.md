@@ -466,13 +466,13 @@ Located in `DITTEAU_PLATFORM.GOVERNANCE`:
 
 From `SCHOOL_INVENTORY.csv` and Snowflake queries:
 
-| Code | Name | SIS Type | Databases | Scripts | Status |
+| Code | Name | Primary SIS Type | Databases | Scripts | Status |
 |------|------|----------|-----------|---------|--------|
 | ANSELM | Saint Anselm College | Workday | ✅ DEV/TEST/PROD | 01-05, 07 | Active |
 | DEMEAU | DEMEAU (Demo) | Jenzabar One | ✅ DEV/TEST/PROD | 01-07 | Active |
-| MERRIMACK | Merrimack College | Jenzabar CX | ✅ DEV/TEST/PROD | 01-05, 07 | Active |
-| COLBY | Colby College | Jenzabar CX | ❌ None | — | Not provisioned |
-| ENDICOTT | Endicott College | Jenzabar CX | ❌ None | — | Not provisioned |
+| MERRIMACK | Merrimack College | Jenzabar One | ✅ DEV/TEST/PROD | 01-05, 07 | Active |
+| COLBY | Colby College | Workday | ❌ None | — | Not provisioned |
+| ENDICOTT | Endicott College | Workday | ❌ None | — | Not provisioned |
 | SPRINGFIELD | Springfield College | Banner | ❌ None | — | Not provisioned |
 
 ---
