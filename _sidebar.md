@@ -47,6 +47,7 @@
 - **Governance & Quality**
 - [DQ Framework](governance/dq-framework.md)
 - [Data Contracts](governance/data-contracts.md)
+- [RAP Implementation Review](governance/rap-implementation-review.md)
 
 ---
 

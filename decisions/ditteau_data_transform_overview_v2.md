@@ -186,16 +186,23 @@ Merrimack is configured with **both** Jenzabar CX and Jenzabar One enabled:
 
 ```json
 {
-  "primary_sis": "JENZABAR_CX",
+  "primary_sis": "JENZABAR_ONE",
   "has_jenzabar_cx": true,
   "has_jenzabar_one": true
 }
 ```
 
-The run script comment indicates "Jenzabar One (in progress)". This represents a migration seam where:
-- CX remains the primary SIS (`primary_sis: JENZABAR_CX`)
-- J1 staging models are enabled and will read from `MERRIMACK_DD_DEV.DEPOSIT`
-- Both source systems feed into the unified deterge/distribute layers
+This is a migration seam:
+- **Jenzabar One is the primary SIS.** Corrected 2026-08-14; this previously read
+  `JENZABAR_CX`, which did not match the institution's actual system of record.
+- J1 staging models read from `MERRIMACK_DD_DEV.DEPOSIT`
+- The CX archive remains enabled and feeds the unified deterge/distribute layers
+
+⚠️ The J1 deposit is currently sparse — 500 rows in `stg_j1__students` against 74,846 in
+`stg_jcx__students`. Because identity anchors never re-anchor once minted
+(`int_ditteau_id_registry.sql`), Merrimack keeps ~71,400 CX-anchored identities while new
+persons anchor to J1. That split is expected mid-migration and matches Anselm's shape
+(35,277 CX vs 6,468 Workday); it resolves as the J1 load fills in.
 
 ---
 
@@ -203,14 +210,22 @@ The run script comment indicates "Jenzabar One (in progress)". This represents a
 
 ### 6.1 Script Inventory
 
-| Script | School | Target | Primary SIS |
-|--------|--------|--------|-------------|
-| `run_anselm_dev.sh` | St. Anselm College | `anselm_dev` | WORKDAY |
-| `run_colby_dev.sh` | Colby College | `colby_dev` | JENZABAR_CX |
-| `run_demeau_dev.sh` | DEMEAU (Demo) | `demeau_dev` | JENZABAR_ONE |
-| `run_endicott_dev.sh` | Endicott College | `endicott_dev` | JENZABAR_CX |
-| `run_merrimack_dev.sh` | Merrimack College | `merrimack_dev` | JENZABAR_CX |
-| `run_springfield_dev.sh` | Springfield College | `springfield_dev` | BANNER |
+| Script | School | Target | Primary SIS | Runs today? |
+|--------|--------|--------|-------------|---|
+| `run_anselm_dev.sh` | St. Anselm College | `anselm_dev` | WORKDAY | Yes |
+| `run_demeau_dev.sh` | DEMEAU (Demo) | `demeau_dev` | JENZABAR_ONE | Yes |
+| `run_merrimack_dev.sh` | Merrimack College | `merrimack_dev` | JENZABAR_ONE | Yes |
+| `run_colby_dev.sh` | Colby College | `colby_dev` | WORKDAY | No — no target |
+| `run_endicott_dev.sh` | Endicott College | `endicott_dev` | WORKDAY | No — no target |
+| `run_springfield_dev.sh` | Springfield College | `springfield_dev` | BANNER | No — no target |
+
+Merrimack, Colby and Endicott were corrected on 2026-08-14 — all three previously read
+`JENZABAR_CX`, which matched neither the institution's system of record nor, for Colby
+and Endicott, any enabled source (`has_workday` was `false` alongside a Workday primary).
+
+`profiles.yml` defines only `{merrimack,anselm,demeau}_{dev,test,prod}`. The other three
+scripts fail immediately on a missing target and those schools have no Snowflake
+databases — the scripts are provisioning scaffolding, not runnable configuration.
 
 ### 6.2 Source Systems per School
 
