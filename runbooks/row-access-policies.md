@@ -262,11 +262,46 @@ Valid tiers are `FULL`, `SCOPED`, `AGGREGATED`, `NONE`. There is no check constr
 
 ## E. Testing a RAP as a Role
 
-### E.1 Three constraints that produce misleading results
+### E.1 Four constraints that produce misleading results
 
 1. **A row access policy is not a callable UDF.** `SELECT rap_student_academic('123')` fails with SQL compilation error `002141`. The body only evaluates when the policy is attached to a table.
 2. **Never test as `SYSADMIN` or `ACCOUNTADMIN`.** The policy short-circuits to `TRUE`, so every query returns all rows and the test appears to pass regardless of tier logic.
 3. **The business roles have no DEV/TEST compute.** They are granted `{CODE}_ANALYTICS_PROD` only, so DEV testing needs temporary warehouse, database, and schema grants.
+4. **Setting the role at connect time does not restrict the session.** `LVANPELT` has `DEFAULT_SECONDARY_ROLES = ["ALL"]`, so `ACCOUNTADMIN` and `DITTEAU_ADMIN` are active as *secondary* roles in every session no matter what primary role is requested. Object access resolves against the union of all active roles, so constraint 2 is not satisfied merely by passing `--role` or setting `role:` in a profile.
+
+   Every session that tests access **must** begin:
+
+   ```sql
+   USE SECONDARY ROLES NONE;
+   ```
+
+   Confirm it took effect before trusting any result:
+
+   ```sql
+   SELECT CURRENT_ROLE(), CURRENT_SECONDARY_ROLES();
+   -- expect the requested role and {"roles":"","value":"NONE"}
+   ```
+
+   Found 2026-08-15 while verifying `add_service_role_source_grants.sql`. Three deliberate cross-tenant reads — `DEMEAU_DBT_DEV` against `MERRIMACK_CX_ARCHIVE` and two others — all **succeeded**, returning 507,026 Merrimack rows to a DEMEAU role. Tenant isolation was in fact correct; the test was measuring the user's privilege rather than the role's. With `USE SECONDARY ROLES NONE` the same three reads fail with `002003` "Database does not exist or not authorized," which is the correct result.
+
+   This is the same failure shape as the false attachment validation in F.0: a check that reports success while measuring nothing. Note the direction of the error — it produced a **false alarm** here, but the identical mechanism produces a **false pass** whenever the test expects access to be allowed.
+
+   Dedicated service users (`SVC_{CODE}_DBT_{ENV}`) are the durable answer, since each holds exactly one role. They are not usable yet — see E.6.
+
+### E.6 Service users exist but cannot authenticate
+
+Every school has `SVC_{CODE}_DBT_{DEV,TEST,PROD}` with the matching role as `DEFAULT_ROLE`. Running dbt as these users — rather than as a person with `--role` — is the designed mechanism and the only one that makes constraint 4 unnecessary.
+
+Two things block it, as observed 2026-08-15 on all three DEMEAU service users:
+
+| Property | Current | Needed |
+|---|---|---|
+| `RSA_PUBLIC_KEY` | `null` | a registered public key |
+| `TYPE` | `PERSON` | `SERVICE` |
+
+`profiles.yml` uses `authenticator: snowflake_jwt`, which requires key-pair auth. These users have passwords only and no key, so no dbt target can currently connect as them. Separately, `TYPE = PERSON` subjects them to MFA policy, which will break unattended runs regardless of the key.
+
+`DEFAULT_SECONDARY_ROLES = ["ALL"]` is also set on all three, but is currently harmless: each service user holds exactly one role, so `ALL` resolves to that role alone. It becomes a live risk the moment any additional role is granted to one of them, and setting it to `NONE` costs nothing today.
 
 There is also a type constraint: the policy signature is `NUMBER(38,0)` and the column it attaches to must be in the NUMBER family. Snowflake matches on type *family*, not precision or scale — a `NUMBER(38,0)` policy attaches to `dim_student.student_id` at `NUMBER(38,5)` without complaint, but would be rejected by a `VARCHAR` column.
 
