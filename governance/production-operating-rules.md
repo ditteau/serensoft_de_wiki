@@ -12,7 +12,7 @@ observed before a change is considered done.
 It is a rules document, not a runbook. Procedures live in
 [runbooks/row-access-policies.md](../runbooks/row-access-policies.md). The reasoning
 behind several of these rules is in
-[governance/rap-implementation-review.md](rap-implementation-review.md).
+[governance/governance-and-production-readiness-review.md](governance-and-production-readiness-review.md).
 
 ---
 

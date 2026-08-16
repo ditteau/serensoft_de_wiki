@@ -47,7 +47,8 @@
 - **Governance & Quality**
 - [DQ Framework](governance/dq-framework.md)
 - [Data Contracts](governance/data-contracts.md)
-- [RAP Implementation Review](governance/rap-implementation-review.md)
+- [Governance & Production Readiness Review](governance/governance-and-production-readiness-review.md)
+- [Production Operating Rules](governance/production-operating-rules.md)
 
 ---
 
