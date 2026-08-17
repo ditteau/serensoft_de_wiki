@@ -138,10 +138,27 @@ The user-keyed path exists because Streamlit in Snowflake runs owner's-rights, s
 5. `advisor_student_map` is populated, or no role holds `SCOPED` in that environment
 6. Attachment is confirmed by querying `information_schema.policy_references`
 
-**Rule 5.4 — Preconditions before enabling masking:** the policy set exists in that
-database, and `role_pii_unmask` / `user_pii_unmask` are populated. Both grids default to
-deny by absence: enabling masking against empty grids masks the column for everyone,
-including the registrar.
+**Rule 5.4 — Preconditions before enabling masking in an environment:**
+
+1. The policy set exists in that database
+2. `{CODE}_DBT_{ENV}` holds `APPLY` on each masking policy. Without it the build fails
+   with `does not exist or not authorized` — a message Snowflake uses for both a
+   missing object and a missing grant
+3. `role_pii_unmask` carries a row per PII class for `{CODE}_DBT_{ENV}`. The ETL role
+   writes these columns and holds the plaintext by construction; masking it protects
+   nothing and **breaks every `not_null` test on a masked column**
+4. `role_pii_unmask` / `user_pii_unmask` are populated for the principals who need
+   plaintext. Both grids deny by absence: enabling masking against empty grids masks
+   the column for everyone, including the registrar
+5. Attachment is confirmed by querying `information_schema.policy_references`
+
+**Rule 5.4.1** — Masking is applied by the `apply_masking()` post-hook, which re-attaches
+policies on every build. Do not apply masking by ad-hoc `ALTER TABLE`: `CREATE OR REPLACE
+TABLE` drops column policies, so a hand-applied mask survives only until the next build
+and the build reports success either way.
+
+**Rule 5.4.2** — Never resolve masking exemptions from a hardcoded role list inside a
+policy body. Use the unmask grids, which are queryable, auditable and expiring.
 
 **Rule 5.5** — `{CODE}_STREAMLIT_OWNER_{ENV}` must **never** appear in
 `role_domain_access`, including with tier `NONE`. Absence and `NONE` both deny today, but
@@ -191,6 +208,8 @@ beside it.
 
 | Never | Why |
 |---|---|
+| Apply a masking policy by ad-hoc `ALTER TABLE` | Dropped by the next `CREATE OR REPLACE TABLE`; use `apply_masking()` |
+| Lower a test's severity because masking made it fail | Trades real data-quality coverage for a control that protects nothing against the ETL role |
 | `CREATE OR REPLACE SCHEMA` on a deposit schema | Destroys `INGEST_STAGE` and the direct `WRITE` grant no future grant covers |
 | dbt `+grants:` configuration | Revokes working future grants |
 | Full-refresh of `int_ditteau_id_registry` | Re-mints every `ditteau_id` |
@@ -207,11 +226,21 @@ beside it.
 |---|---|---|---|
 | DEV / TEST / PROD built | ✅ all three | DEV only | DEV only |
 | Service users in use | TEST, PROD | — | — |
-| RLS enabled | ❌ | ❌ | ❌ |
-| Masking enabled | ❌ | ❌ | ❌ |
-| Masking policies deployed | DEV only | none | none |
-| `user_domain_access` populated | ❌ | ❌ | ❌ |
-| Advisor roster populated | ❌ | ❌ | ❌ |
+| RLS enabled | ✅ **PROD** | ❌ | ❌ |
+| Masking enabled | ✅ **PROD** | ❌ | ❌ |
+| Masking policies deployed | DEV + PROD | none | none |
+| `user_domain_access` populated | ✅ PROD (1 user) | ❌ | ❌ |
+| Advisor roster populated | ⚠️ PROD, **synthetic** | ❌ | ❌ |
+
+DEMEAU PROD carries 9 row-access attachments and 7 masking attachments, both re-applied
+by post-hook on every build. Verified 2026-08-17 by connecting as four demo personas:
+registrar 89,123 rows with names and dates of birth in clear; advisor 125 rows with
+names masked; financial aid 89,123 rows plus 204 aid records with amounts visible and
+names masked; IR analyst 0 rows, since `AGGREGATED` denies at row grain by design.
+
+DEMEAU's advisor roster is **synthetic** — 40 students assigned to a demo persona. No
+school has advisor data in any source system, so `SCOPED` cannot be demonstrated with
+real assignments anywhere.
 
 Open dependencies outside engineering control:
 

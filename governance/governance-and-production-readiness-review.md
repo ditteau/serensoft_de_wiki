@@ -52,19 +52,21 @@ else.
 | Business roles | 12 (registrar / advisor / financial aid / IR analyst × 3 schools) |
 | Tier grid rows | 360 (10 roles × 4 domains × 9 databases) |
 | Domain policies | 3 — `student_academic`, `financial_aid`, `admissions` |
-| Masking policies | 7 (DEMEAU DEV only — see §7) |
+| Masking policies | 7, deployed to DEMEAU DEV and PROD; 7 column attachments live in PROD |
 | Models inventoried | 44, classified for whether their grain reaches an individual |
 | Automated governance tests | 3, each verified to fail when its invariant is broken |
 | Service accounts commissioned | 9 (`SVC_{CODE}_DBT_{ENV}`, key-pair, `TYPE = SERVICE`) |
 | Environments fully built | 3 (DEMEAU DEV, TEST, PROD — the first PROD in any school) |
-| Migrations written and executed | 11 |
+| Migrations written and executed | 16 |
 
 Tier resolves `COALESCE(user_grid, role_grid)`; the scoped predicate resolves against
 `CURRENT_USER()`. Masking resolves against a **separate** grid keyed on PII class, not on
 access tier.
 
-Enforcement remains off in every environment. That is deliberate and gated on the
-preconditions in the Operating Rules §5.3.
+Enforcement is **on in DEMEAU PROD** as of 2026-08-17 and off everywhere else. DEMEAU is
+a demonstration tenant on de-identified data; enabling it there is how the mechanism gets
+exercised before any institution's records depend on it. Merrimack and Anselm remain off
+and gated on the preconditions in the Operating Rules §5.3 and §5.4.
 
 ---
 
@@ -81,7 +83,7 @@ executed, because neither flag has ever been true in any environment.
 | Defect | Consequence if undetected |
 |---|---|
 | `apply_rap()` resolved the policy path via `var('env')` — no such var exists | Enforcement fails on the first PROD model |
-| `enable_masking_policies` is read by no code at all | Three model docs described masking as active; nothing masked anything |
+| `enable_masking_policies` is read by no code at all | Three model docs described masking as active; nothing masked anything. **Closed 2026-08-17** by `apply_masking()` |
 | Policy signature was `VARCHAR`; every target column is `NUMBER` or `TEXT` | Policy creates, then fails at attachment (`003554`) |
 | `fact_enrollment` carried only a surrogate key, no natural `student_id` | Attaches cleanly, matches nothing, returns zero rows for every scoped user |
 | `GRANT APPLY … TO ROLE SYSADMIN` — SYSADMIN already owns the policies | No-op; the dbt role that runs the hook has no APPLY |
@@ -360,14 +362,35 @@ in place.
 The promotion path now runs the right direction: institutional feeds land in PROD, and
 DEV and TEST receive deposit by zero-copy clone from it.
 
+**Row access and column masking are live in DEMEAU PROD** as of 2026-08-17 — 9 row-access
+attachments and 7 masking attachments, both re-applied by post-hook on every build. The
+demonstration is four personas running the same query:
+
+| Persona | Rows visible | Name | Date of birth | Aid records |
+|---|---|---|---|---|
+| Registrar | 89,123 | in clear | in clear | 0 |
+| Advisor | 125 | `***` | year only | 0 |
+| Financial aid | 89,123 | `***` | year only | 204, amounts visible |
+| IR analyst | 0 | — | — | 0 |
+
+Two things that took making it work to learn. Enabling masking **broke dbt's own data
+tests** — they run as the service role, which read fully-populated columns through the
+mask; the ETL role writes those columns and holds the plaintext by construction, so
+masking it protects nothing. And a build failed with 17 errors that were all one
+network-policy rejection, arriving disguised as `not_null` failures on whatever models
+happened to be running.
+
 ---
 
 ## 7. What is still open
 
 | Item | Owner |
 |---|---|
-| Masking policies exist in DEMEAU DEV only — absent from 8 of 9 databases | DE |
-| `user_domain_access` empty everywhere; **required** before any Streamlit RLS demo, since owner's-rights makes the role path deny | DE / KKM |
+| Masking policies absent from Merrimack and Anselm, all environments | DE |
+| `user_domain_access` holds one user in DEMEAU PROD. Every additional Streamlit viewer needs a row, or owner's-rights denies them silently | DE |
+| DEMEAU's advisor roster is synthetic; `SCOPED` has never been demonstrated against real assignments | Institutions |
+| Whether race/ethnicity columns should be masked — they are IPEDS reporting categories, not direct identifiers, and were wrongly documented as masked for months | KKM |
+| Account network policy does not cover every engineer egress IP; long builds fail intermittently and the errors look like data-quality failures | WDT |
 | Eight models flagged for small-cell re-identification review | KKM |
 | Whether `FA_ROLE` needs unmasked names and dates of birth | KKM |
 | DEMEAU's share appears derived from Anselm's — `ID_REC` matches at 356,950 rows. "Synthetic" may be the wrong word, with different obligations | KKM |
