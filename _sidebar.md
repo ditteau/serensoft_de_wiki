@@ -58,3 +58,6 @@
 - [ADR-002: Delete-Where Flag for Deposit Loader](decisions/adr-002-delete-where-flag-deposit-loader.md)
 - [ADR-003: Row Access Policy Architecture](decisions/adr-003-row-access-policy-architecture.md)
 - [ADR-004: Category-Based Data Retention Policy Schema](decisions/adr-004-retention-policy-category-based-schema.md)
+- [ADR-005: Declare Domain and Grain at Build Time](decisions/adr-005-model-authoring-contract.md)
+- [ADR-006: Mask Out-of-Domain Columns in Cross-Domain Models](decisions/adr-006-cross-domain-column-masking.md)
+- [ADR-007: Per-Tenant Entitlement Grids (Proposed)](decisions/adr-007-per-tenant-entitlement-grids.md)

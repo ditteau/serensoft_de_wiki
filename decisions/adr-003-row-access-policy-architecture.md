@@ -1,10 +1,68 @@
 # ADR-003: Domain-Scoped Row Access Policy Architecture
 
-**Status:** Accepted — built and validated; enforcement not yet enabled in any PROD
+**Status:** Accepted — enforcement live in DEMEAU PROD since 2026-08-18; not enabled in any tenant PROD
 
-**Date:** 2026-08-10 (last updated 2026-08-12)
+**Date:** 2026-08-10 (last updated 2026-08-26)
 
 **Author:** LVP
+
+---
+
+### Amendment 2026-08-26 — deployment state corrected
+
+**The status line and the deployment block below were wrong, and the specific error was
+that enforcement had never run.** It had. This is recorded here rather than edited away
+because the claim survived three revisions of the access policy on the strength of a
+handoff note marked "confirmed", and the correction is more useful than a clean document.
+
+Measured 2026-08-26 from `SNOWFLAKE.ACCOUNT_USAGE.POLICY_REFERENCES` against
+`DEMEAU_DD_PROD`:
+
+- **9 row access policy attachments across 3 policies.** `rap_student_academic` on
+  `dim_student`, `fact_student_term`, `fact_enrollment`, `mart_student_at_risk`,
+  `mart_academic_progress` and `mart_registration_holds`; `rap_admissions` on
+  `dim_applicant` and `fact_application`; `rap_financial_aid` on `fact_aid_award`.
+- **7 masking attachments across 4 policies.** `mask_name` on three columns and
+  `mask_dob` on one, both on `dim_student`; `mask_financial_amount` on two columns of
+  `fact_aid_award`; `mask_email` on `mart_academic_progress`.
+
+`scripts/run_demeau.sh` forces `enable_row_level_security` and
+`enable_masking_policies` true whenever `ENV=prod`, so every DEMEAU PROD build has
+enabled both. Enforcement was measured working on 2026-08-18: four persona sessions,
+four different answers, zero errors, with the spread only executing policies produce.
+
+**What is still true:** no *tenant* database enforces anything. Enforcement has only
+ever run in DEMEAU. ⚠️ But note DEMEAU is **not** synthetic — it is pseudonymised
+Anselm-derived data sharing all 14,150 student ids with `ANSELM_DD_DEV` and carrying
+real dates of birth for 94 per cent of them. Use is authorised by Saint Anselm. Treat
+`DEMEAU_DD_*` as real institutional data.
+
+**Two things the original block got right and are worth re-reading:** school staff still
+hold no Snowflake accounts, so `advisor_username_crosswalk` remains unpopulated and
+`SCOPED` remains untestable against real principals; and the warning about a BI tool on
+a shared service account collapsing all advisors into one identity still stands.
+
+**Other state changes since 2026-08-12:**
+
+- The grid is no longer 360 rows. A privilege-escalation defect was found on 2026-08-24 —
+  every business persona role inherited `{CODE}_REPORTING_PROD`, which itself held `FULL`
+  on all domains, so any persona reached `FULL` with one `USE ROLE`. Five non-persona
+  roles were removed from the grid across all nine databases, taking each to 20 rows.
+  `DEMEAU_DD_DEV` is now 36 rows across 9 roles after the persona work of 2026-08-26.
+- **The follow-up this ADR owed has landed.** It asked for "a test asserting cross-domain
+  tier coherence"; `assert_cross_domain_tier_coherence` exists and passes. It has already
+  earned its place twice — it refused the Admissions and Finance personas on 2026-08-26
+  for the same shape that produced the `FA_ROLE` defect recorded below.
+- Ten governance assertions now run on every build, nine passing and one warning by
+  design.
+- Two later decisions extend this architecture: **ADR-005** supplies the precondition it
+  assumed — that every model declares a domain — and **ADR-006** resolves the
+  one-policy-per-table constraint recorded below for models whose content spans domains.
+
+---
+
+> *Historical, retained for the record. Superseded by the amendment above — the
+> enforcement claim in the paragraph below is false.*
 
 **Deployment state as of 2026-08-12:** All governance objects exist in all nine
 `{SCHOOL}_DD_{ENV}` databases for MERRIMACK, ANSELM, and DEMEAU — 12 business
