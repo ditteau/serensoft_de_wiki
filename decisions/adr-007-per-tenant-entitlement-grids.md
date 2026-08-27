@@ -1,6 +1,36 @@
 # ADR-007: Per-Tenant Entitlement Grids
 
-**Status:** Proposed — not implemented. No seed exists, the generator is unchanged, and N-16 is still `[PLANNED]`.
+**Status:** **Accepted — implemented 2026-08-26.** Both seed families exist, the hardcoded
+grid is out of `generate_school.py`, and N-16 is deployed as three assertions, green on
+the `demeau_dev`, `merrimack_dev` and `anselm_dev` targets. TEST and PROD need the seeds
+built there before the assertions can run, so N-16's coverage today is DEV only.
+
+> **Two things this ADR did not anticipate, recorded here because they changed the build.**
+>
+> **1. Every difference that existed was rollout lag, not tenant preference.** The ADR
+> reasoned from divergence between `DEMEAU_DD_DEV` (36 rows / 9 roles) and
+> `MERRIMACK_DD_DEV` (20 / 5) and treated it as the kind of variation overrides exist to
+> record. Measurement showed otherwise: Anselm and Merrimack do not have the Admissions,
+> Finance, Cabinet or Student Success **roles at all** — all seven persona roles exist
+> only in DEMEAU. The divergence was a project plan, not a posture. So **all six override
+> files ship empty**, and encoding the lag as `NARROW` rows would have been actively
+> harmful: it would have frozen a mid-rollout state as deliberate policy and hidden the
+> drift behind a label reading "intended", which is the exact failure this ADR set out to
+> fix.
+>
+> **2. The divergence is per-(tenant, environment), not per-tenant.** `DEMEAU_DD_DEV`
+> differs from `DEMEAU_DD_TEST` and `DEMEAU_DD_PROD`. The override seed is keyed by school
+> only, so it cannot express an environment-specific posture — which is correct, because
+> an environment-specific *entitlement* is drift by definition rather than policy. The
+> one genuinely per-environment row, the `{CODE}_DBT_{ENV}` service identity, is
+> deliberately kept out of the seeds entirely and emitted by `generate_school.py`, because
+> it is mechanical rather than a policy decision.
+>
+> **N-16 justified itself on its first run** by finding the D-15 Financial Aid correction
+> applied to DEMEAU alone, leaving four wrong cells across Anselm and Merrimack. Fixed by
+> `reconcile_fa_grid_d15_anselm_merrimack.sql` across six databases — an `UPDATE`, not an
+> `INSERT`, because the rows existed carrying the wrong value and the additive
+> `WHERE NOT EXISTS` pattern would have run clean and changed nothing.
 
 **Date:** 2026-08-26
 
