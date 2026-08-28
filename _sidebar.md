@@ -61,3 +61,4 @@
 - [ADR-005: Declare Domain and Grain at Build Time](decisions/adr-005-model-authoring-contract.md)
 - [ADR-006: Mask Out-of-Domain Columns in Cross-Domain Models](decisions/adr-006-cross-domain-column-masking.md)
 - [ADR-007: Per-Tenant Entitlement Grids (Proposed)](decisions/adr-007-per-tenant-entitlement-grids.md)
+- [ADR-008: PII Access Logging on Built-In ACCESS_HISTORY](decisions/adr-008-pii-access-logging-access-history.md)
