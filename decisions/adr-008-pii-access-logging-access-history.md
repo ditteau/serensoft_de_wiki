@@ -184,8 +184,14 @@ account-wide table, and asserting it nine times would imply nine controls.
 
 ### Follow-ups
 
-1. Schedule and retain `capture_persona_results.py`. Until then masking
-   enforcement has no durable evidence. This is the highest-value item here.
+1. ✅ **Done 2026-08-28.** `capture_persona_results.py` runs weekly under launchd via
+   `scripts/run_persona_capture.sh`, and `verify_pii_access_log.sql` gained checks
+   8/9/10 — freshness, persona coverage, and **an assertion that masking actually
+   enforced**, comparing the Registrar's sampled name against the other three
+   personas' `***`. All 10 checks PASS. ⚠️ Still open as O-40: the host is a
+   workstation, so evidence generation depends on one laptop being awake. Moving it
+   to CI or a scheduled container requires distributing the four persona keys as
+   secrets, which is an unmade decision.
 2. Decide whether unprotected-but-real-PII surfaces (`DEMEAU_DD_DEV`,
    `DEMEAU_CX_ARCHIVE`) need a companion view scoped by database rather than by
    policy. This is the tag question again, in a smaller form.
