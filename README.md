@@ -18,6 +18,7 @@ Snowflake architecture, ETL runbooks, and engineering decisions for the Ditteau 
 | Read the governance retrospective and lessons | [Governance & Production Readiness Review](governance/governance-and-production-readiness-review.md) |
 | Know the rules for running in production | [Production Operating Rules](governance/production-operating-rules.md) |
 | Manage row-level access or advisor rosters | [Row Access Policies](runbooks/row-access-policies.md) |
+| Deploy a Streamlit dashboard to PROD | [Streamlit in Snowflake (Workspaces)](runbooks/streamlit-in-snowflake-workspaces.md) |
 
 ---
 

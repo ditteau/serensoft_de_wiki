@@ -41,6 +41,7 @@
 - [External Data Sources](runbooks/external-data-sources.md)
 - [Source Refresh Troubleshooting](runbooks/source-refresh.md)
 - [Row Access Policies](runbooks/row-access-policies.md)
+- [Streamlit in Snowflake (Workspaces)](runbooks/streamlit-in-snowflake-workspaces.md)
 
 ---
 
