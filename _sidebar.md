@@ -62,3 +62,4 @@
 - [ADR-006: Mask Out-of-Domain Columns in Cross-Domain Models](decisions/adr-006-cross-domain-column-masking.md)
 - [ADR-007: Per-Tenant Entitlement Grids (Proposed)](decisions/adr-007-per-tenant-entitlement-grids.md)
 - [ADR-008: PII Access Logging on Built-In ACCESS_HISTORY](decisions/adr-008-pii-access-logging-access-history.md)
+- [ADR-009: dbt Build Provenance via on-run-end Hook](decisions/adr-009-dbt-build-provenance.md)
