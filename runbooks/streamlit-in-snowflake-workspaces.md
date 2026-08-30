@@ -440,18 +440,76 @@ separate.
 Already fetched on 2026-08-30 (`FAST_FORWARD`, not "up to date" — E.3). In the workspace,
 role selector → `SYSADMIN` → **Pull**.
 
-You should see five new files in `streamlit/`:
+You should see five new folders under `streamlit/persona_apps/`:
 
 ```
-demeau_persona_app_registrar.py
-demeau_persona_app_fa.py
-demeau_persona_app_ir_analyst.py
-demeau_persona_app_admissions.py
-demeau_persona_app_finance.py
+registrar/  fa/  ir_analyst/  admissions/  finance/
 ```
+
+Each holds `demeau_persona_app.py`, its own `snowflake.yml`, `pyproject.toml` and
+`.streamlit/config.toml`.
 
 ⚠️ Pulling under an app-owner role fails with *"Secret 'secret from configuration' does
 not exist or not authorized"*, which does not obviously mean "wrong role" (E.1).
+
+### H.1a ⚠️ Deploy reads `snowflake.yml`, NOT the file open in the editor
+
+**The single most misleading thing in this flow. It cost three deploys on 2026-08-30.**
+
+The Deploy dialog offers App title, App ID, location, compute pool, query warehouse and
+artifact repositories — and **no way to choose the main file**. That comes from
+`snowflake.yml`. So opening `demeau_persona_app_admissions.py` and clicking Deploy shipped
+`demeau_governance_sis.py`, because that is what the shared `streamlit/snowflake.yml` still
+named. Twice, with a correct-looking dialog each time: right owner role, right database,
+right pool, right artifact repository.
+
+⚠️ **The failure was disguised by a correct-looking error.** The deployed app complained it
+could not read `GOVERNANCE.DEMO_PERSONA_RESULTS` — which is *true and proper*, because the
+Admissions owner role holds no `USAGE` on the `GOVERNANCE` schema. A wrong app producing a
+right refusal reads as a permissions problem in the right app.
+
+⚠️ **`Convert to Streamlit app` does not fix this and makes it worse at scale.** Convert
+writes `snowflake.yml` *beside* the file, and there is only one `streamlit/` directory — so
+each Convert overwrites the previous app's definition, including the committed
+`GOVERNANCE_SIS` one. That is what a modified `snowflake.yml` in the file tree means.
+
+**Resolved by structure, not by discipline.** Each persona app is now a self-contained
+folder with its own committed `snowflake.yml`:
+
+```
+streamlit/persona_apps/<persona>/
+    demeau_persona_app.py      main_file — identical in all five folders
+    snowflake.yml              identifier + main_file for THIS persona
+    pyproject.toml             copy — a subfolder is a different directory (E.4)
+    .streamlit/config.toml     copy — the Ditteau theme
+```
+
+So there is **no Convert step** in H.2 below, nothing to hand-edit, and the deployable
+definition lives in git rather than being generated inside a pull-only workspace and
+mirrored back by hand (E.2). Regenerate with `scripts/generate_persona_apps.py`; verify
+with `--check`, which compares byte-for-byte against `streamlit/demeau_persona_app.py`.
+
+### H.1b Previews cannot be prevented, only cleaned up
+
+Opening a file or its Settings starts a preview service, and there is no setting to stop
+that. Previews **cannot run these apps at all** (E.7) so they produce nothing useful, and
+each leaves a durable object behind: the service stops, the Streamlit object does not, and
+the object regenerates under the same deterministic name next time.
+
+Six were created and dropped over one afternoon. Treat it as cleanup-after, not
+avoid-in-advance:
+
+```sql
+-- Everything running right now. Previews live in USER$<you>.PUBLIC.
+SHOW SERVICES IN ACCOUNT;
+SHOW STREAMLITS IN SCHEMA "USER$LVANPELT".PUBLIC;
+DROP STREAMLIT "USER$LVANPELT".PUBLIC.<name>;
+```
+
+⚠️ **`DROP STREAMLIT` fails as `ACCOUNTADMIN`** with *"must have OWNERSHIP granted on
+STREAMLIT …"*. It needs the app's owner role. ADR-010 lists `DROP` as the one lever that
+works for a running app without noting that, which matters when you are trying to stop a
+runaway in a hurry.
 
 ### H.2 The five passes
 
@@ -460,11 +518,11 @@ to forget and expensive to get wrong.
 
 | # | File | Switch role to | App ID | App title |
 |---|---|---|---|---|
-| 1 | `demeau_persona_app_registrar.py` | `DEMEAU_STREAMLIT_OWNER_REGISTRAR_PROD_ROLE` | `DEMEAU_REGISTRAR_APP` | Registrar |
-| 2 | `demeau_persona_app_fa.py` | `DEMEAU_STREAMLIT_OWNER_FA_PROD_ROLE` | `DEMEAU_FA_APP` | Financial Aid |
-| 3 | `demeau_persona_app_ir_analyst.py` | `DEMEAU_STREAMLIT_OWNER_IR_ANALYST_PROD_ROLE` | `DEMEAU_IR_APP` | Institutional Research |
-| 4 | `demeau_persona_app_admissions.py` | `DEMEAU_STREAMLIT_OWNER_ADMISSIONS_PROD_ROLE` | `DEMEAU_ADMISSIONS_APP` | Admissions |
-| 5 | `demeau_persona_app_finance.py` | `DEMEAU_STREAMLIT_OWNER_FINANCE_PROD_ROLE` | `DEMEAU_FINANCE_APP` | Finance |
+| 1 | `persona_apps/registrar/` | `DEMEAU_STREAMLIT_OWNER_REGISTRAR_PROD_ROLE` | `DEMEAU_REGISTRAR` | Registrar |
+| 2 | `persona_apps/fa/` | `DEMEAU_STREAMLIT_OWNER_FA_PROD_ROLE` | `DEMEAU_FA` | Financial Aid |
+| 3 | `persona_apps/ir_analyst/` | `DEMEAU_STREAMLIT_OWNER_IR_ANALYST_PROD_ROLE` | `DEMEAU_IR` | Institutional Research |
+| 4 | `persona_apps/admissions/` | `DEMEAU_STREAMLIT_OWNER_ADMISSIONS_PROD_ROLE` | `DEMEAU_ADMISSIONS` | Admissions |
+| 5 | `persona_apps/finance/` | `DEMEAU_STREAMLIT_OWNER_FINANCE_PROD_ROLE` | `DEMEAU_FINANCE` | Finance |
 
 Each file names its own intended role and App ID in a header banner, so you can check the
 pair without coming back here.
@@ -472,11 +530,10 @@ pair without coming back here.
 For each pass:
 
 1. **Switch role** to the owner role for that row.
-2. Right-click the file → **Convert to Streamlit app** (E.4 — not the Welcome-screen
-   button).
-3. **App settings » Execution » Artifact repositories** →
-   `SNOWFLAKE.SNOWPARK.PYPI_SHARED_REPOSITORY` (E.5). Not offered in the Convert dialog.
-4. **Deploy**, with:
+2. Open that folder's `demeau_persona_app.py`. **Do not Convert** — the folder already
+   carries its own `snowflake.yml` (H.1a). If Convert offers itself, decline it; it would
+   overwrite the definition with a fresh one.
+3. **Deploy**, with:
 
    | Field | Value |
    |---|---|
@@ -489,10 +546,10 @@ For each pass:
    | Network tab | empty — the account has no EAIs and must not gain one |
    | Sharing tab | owner only |
 
-5. **Before clicking Deploy, read the dialog header.** It must say
+4. **Before clicking Deploy, read the dialog header.** It must say
    *App will execute with rights of `DEMEAU_STREAMLIT_OWNER_<PERSONA>_PROD_ROLE`*.
-6. Mirror the generated `snowflake.yml` back into the repo by hand (E.2), under a name
-   that identifies which app it belongs to.
+5. Nothing to mirror back — the `snowflake.yml` that was deployed is already in git.
+6. Drop any preview objects the pass created (H.1b).
 
 > ⚠️ **The compute pool is `DEMEAU_POOL_APPS_PROD`, not `SYSTEM_COMPUTE_POOL_CPU`.** E.6's
 > table still says the system pool because that is what `GOVERNANCE_SIS` was deployed on
@@ -564,9 +621,9 @@ safe end state. Every viewer entitlement from here is a separate decision.
 Under D-1 the usage grant **is** the control surface. There is no per-viewer
 differentiation inside an application (§J), so:
 
-- Granting someone usage on `DEMEAU_REGISTRAR_APP` shows them **unmasked student names**.
-- Granting usage on `DEMEAU_FA_APP` shows them **unmasked aid amounts**.
-- `DEMEAU_IR_APP` and `DEMEAU_FINANCE_APP` carry every row and **no identity** — that is
+- Granting someone usage on `DEMEAU_REGISTRAR` shows them **unmasked student names**.
+- Granting usage on `DEMEAU_FA` shows them **unmasked aid amounts**.
+- `DEMEAU_IR` and `DEMEAU_FINANCE` carry every row and **no identity** — that is
   D-4 and D-16, and it is why those two are the safest to share widely.
 
 ```sql
