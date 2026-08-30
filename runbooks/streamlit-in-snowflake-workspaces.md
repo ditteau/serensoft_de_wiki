@@ -4,7 +4,7 @@ Operational guide for deploying the DEMEAU dashboards into `DEMEAU_DD_PROD` as
 Streamlit in Snowflake apps, backed by a Git repository and served through
 Workspaces.
 
-**Last updated:** 29 August 2026
+**Last updated:** 30 August 2026
 **Maintained by:** LVP
 
 ---
@@ -17,6 +17,7 @@ Workspaces.
 - [D. Running the identity probe](#d-running-the-identity-probe)
 - [E. Deploying an app from a Git-backed Workspace](#e-deploying-an-app-from-a-git-backed-workspace)
 - [F. Verification](#f-verification)
+- [H. Deploying the five per-persona applications (D-1)](#h-deploying-the-five-per-persona-applications-d-1)
 - [I. Dependencies: declaring one means declaring all](#i-dependencies-declaring-one-means-declaring-all)
 - [J. What `CURRENT_USER()` actually returns under the container runtime](#j-what-current_user-actually-returns-under-the-container-runtime)
 - [G. Traps](#g-traps)
@@ -44,6 +45,14 @@ RAP and every masking policy. They have never exercised the enforcement path, so
 their working in DEV is not evidence that anything works in PROD.
 
 ### A.2 Target state
+
+> ⚠️ **A.1 and A.2 describe the pre-D-1 world and are kept for the reasoning, not as
+> current state.** "Nothing is deployed in any PROD database" ceased to be true on
+> 2026-08-29 (`GOVERNANCE_SIS`), and the single-owner-role target below was superseded on
+> 2026-08-29 when WDT ratified **D-1**: the topology is now one application *per persona*,
+> each owned by its own role holding that persona's tier. Section B's "two of three apps
+> are gated" is likewise the old framing — the gate was the owner role holding no tier,
+> which is exactly what D-1 changes. **See section H.**
 
 Three apps in `DEMEAU_DD_PROD.DISTRIBUTE`, owned by
 `DEMEAU_STREAMLIT_OWNER_PROD`, deployed from a Workspace backed by
@@ -403,6 +412,203 @@ exits non-zero. `mart_student_health_holds` legitimately shows `[MISSING]` —
 N-17 encodes that domain's denial as absence from the grid.
 
 ---
+
+## H. Deploying the five per-persona applications (D-1)
+
+Written 2026-08-30. Section E is the general flow for **one** app; this is the specific
+five-pass sequence, and the differences are not cosmetic. Read E first — everything there
+still applies, especially E.1 (two roles) and E.7 (preview cannot run these).
+
+### H.0 What is already done, so you do not redo it
+
+| Thing | State |
+|---|---|
+| Five owner roles | ✅ Created, each holding exactly one persona's tier |
+| Grid rows | ✅ 25 in `DEMEAU_DD_PROD.governance.role_domain_access` |
+| PII unmask | ✅ Registrar `NAME`+`DOB`, FA `FINANCIAL_AMOUNT`; others none, by design |
+| Named exception (N-13) | ✅ 28 rows in `seed_streamlit_owner_exceptions`, suite green |
+| Compute pool | ✅ `DEMEAU_POOL_APPS_PROD`, `MAX_NODES` 4 (ADR-010 CP-5) |
+| App files | ✅ Five, pushed to GitHub and fetched into the git repository |
+| Roles granted to you | ✅ All five granted to `LVANPELT` |
+
+**Nothing below changes entitlement.** Every step is deployment. The act that creates
+exposure is granting a *viewer* usage on an app, which is section H.5 and is deliberately
+separate.
+
+### H.1 Pull, as SYSADMIN
+
+Already fetched on 2026-08-30 (`FAST_FORWARD`, not "up to date" — E.3). In the workspace,
+role selector → `SYSADMIN` → **Pull**.
+
+You should see five new files in `streamlit/`:
+
+```
+demeau_persona_app_registrar.py
+demeau_persona_app_fa.py
+demeau_persona_app_ir_analyst.py
+demeau_persona_app_admissions.py
+demeau_persona_app_finance.py
+```
+
+⚠️ Pulling under an app-owner role fails with *"Secret 'secret from configuration' does
+not exist or not authorized"*, which does not obviously mean "wrong role" (E.1).
+
+### H.2 The five passes
+
+One pass per row. **The role must change between passes** — this is the step that is easy
+to forget and expensive to get wrong.
+
+| # | File | Switch role to | App ID | App title |
+|---|---|---|---|---|
+| 1 | `demeau_persona_app_registrar.py` | `DEMEAU_STREAMLIT_OWNER_REGISTRAR_PROD_ROLE` | `DEMEAU_REGISTRAR_APP` | Registrar |
+| 2 | `demeau_persona_app_fa.py` | `DEMEAU_STREAMLIT_OWNER_FA_PROD_ROLE` | `DEMEAU_FA_APP` | Financial Aid |
+| 3 | `demeau_persona_app_ir_analyst.py` | `DEMEAU_STREAMLIT_OWNER_IR_ANALYST_PROD_ROLE` | `DEMEAU_IR_APP` | Institutional Research |
+| 4 | `demeau_persona_app_admissions.py` | `DEMEAU_STREAMLIT_OWNER_ADMISSIONS_PROD_ROLE` | `DEMEAU_ADMISSIONS_APP` | Admissions |
+| 5 | `demeau_persona_app_finance.py` | `DEMEAU_STREAMLIT_OWNER_FINANCE_PROD_ROLE` | `DEMEAU_FINANCE_APP` | Finance |
+
+Each file names its own intended role and App ID in a header banner, so you can check the
+pair without coming back here.
+
+For each pass:
+
+1. **Switch role** to the owner role for that row.
+2. Right-click the file → **Convert to Streamlit app** (E.4 — not the Welcome-screen
+   button).
+3. **App settings » Execution » Artifact repositories** →
+   `SNOWFLAKE.SNOWPARK.PYPI_SHARED_REPOSITORY` (E.5). Not offered in the Convert dialog.
+4. **Deploy**, with:
+
+   | Field | Value |
+   |---|---|
+   | App ID | from the table above |
+   | App title | from the table above |
+   | App location | `DEMEAU_DD_PROD` / `DISTRIBUTE` |
+   | Compute pool | `DEMEAU_POOL_APPS_PROD` |
+   | Query warehouse | `DEMEAU_ANALYTICS_PROD` |
+   | Owner-matches-preview checkbox | leave ticked |
+   | Network tab | empty — the account has no EAIs and must not gain one |
+   | Sharing tab | owner only |
+
+5. **Before clicking Deploy, read the dialog header.** It must say
+   *App will execute with rights of `DEMEAU_STREAMLIT_OWNER_<PERSONA>_PROD_ROLE`*.
+6. Mirror the generated `snowflake.yml` back into the repo by hand (E.2), under a name
+   that identifies which app it belongs to.
+
+> ⚠️ **The compute pool is `DEMEAU_POOL_APPS_PROD`, not `SYSTEM_COMPUTE_POOL_CPU`.** E.6's
+> table still says the system pool because that is what `GOVERNANCE_SIS` was deployed on
+> before ADR-010 CP-2 created the per-school pool. Using the system pool here loses the
+> per-tenant billing attribution that pool exists for, and pool spend is invisible to
+> resource monitors (CP-1, still open).
+
+> ⚠️ **Deploying as `SYSADMIN` is the expensive mistake.** The app would bypass every RAP
+> and every masking policy, show unmasked PII to every viewer, and *look better than
+> working*. If a deployed app shows a real student name where you expected `***`, suspect
+> the owner before suspecting the policy.
+
+> ⚠️ **Preview will fail on all five and that proves nothing.** They open with
+> `get_active_session()` and preview has no injected session (E.7). Deploy is the only
+> real test.
+
+### H.3 Verify each one — as the role, not by counting grants
+
+```sql
+SHOW STREAMLITS IN SCHEMA DEMEAU_DD_PROD.DISTRIBUTE;
+```
+
+Five rows plus `GOVERNANCE_SIS`. Each `owner` must be its own owner role and
+`owner_role_type` must be `ROLE`; `USER` means it is running as a person (F.1).
+
+Then confirm the five genuinely differ. This is the whole point of D-1, and it is the
+check that would have caught a role mix-up:
+
+```bash
+for R in REGISTRAR FA IR_ANALYST ADMISSIONS FINANCE; do
+  printf "%-11s " $R
+  SNOWFLAKE_DEV_ROLE=DEMEAU_STREAMLIT_OWNER_${R}_PROD_ROLE \
+  QUERY_WAREHOUSE=DEMEAU_ANALYTICS_PROD \
+    python scripts/query_snowflake.py \
+    "SELECT (SELECT COUNT(*) FROM DEMEAU_DD_PROD.DISTRIBUTE.DIM_STUDENT)      AS students,
+            (SELECT COUNT(*) FROM DEMEAU_DD_PROD.DISTRIBUTE.FACT_AID_AWARD)   AS aid,
+            (SELECT COUNT(*) FROM DEMEAU_DD_PROD.DISTRIBUTE.FACT_APPLICATION) AS apps"
+done
+```
+
+Measured 2026-08-30 — anything else is a finding:
+
+| Owner role | students | aid | applications |
+|---|---|---|---|
+| Registrar | 89,123 | **0** — aid `NONE` | 279,102 |
+| FA | 89,123 | 204 | 279,102 |
+| IR | 89,123 | 204 | 279,102 |
+| Admissions | 89,123 | **0** — `AGGREGATED` is not row access | 279,102 |
+| Finance | 89,123 | 204 | **0** — admissions `AGGREGATED` |
+
+And identity, on one student so the comparison is real (`ORDER BY student_key`):
+
+| App | `student_full_name` | `student_dob` |
+|---|---|---|
+| Registrar | `Barefoot, Alden N` | `1999-08-14` |
+| everyone else | `***` | `1999-01-01` |
+
+⚠️ **All five showing the same numbers means something is wrong**, most likely that more
+than one app got the same owner. A uniform answer is the failure signature of this
+topology, exactly as it is for the persona capture (C-01 check 10).
+
+### H.4 Then, and only then, stop
+
+Five deployed apps, owner-only sharing, nobody else granted usage. That is a complete and
+safe end state. Every viewer entitlement from here is a separate decision.
+
+### H.5 Granting viewers — the act that creates exposure
+
+Under D-1 the usage grant **is** the control surface. There is no per-viewer
+differentiation inside an application (§J), so:
+
+- Granting someone usage on `DEMEAU_REGISTRAR_APP` shows them **unmasked student names**.
+- Granting usage on `DEMEAU_FA_APP` shows them **unmasked aid amounts**.
+- `DEMEAU_IR_APP` and `DEMEAU_FINANCE_APP` carry every row and **no identity** — that is
+  D-4 and D-16, and it is why those two are the safest to share widely.
+
+```sql
+USE ROLE SECURITYADMIN;
+GRANT USAGE ON STREAMLIT DEMEAU_DD_PROD.DISTRIBUTE.DEMEAU_IR_APP TO ROLE <viewer_role>;
+```
+
+⚠️ **A viewer also needs `USAGE` on the database, the schema and the warehouse** to open
+an app at all — the grant above alone is not sufficient, and the failure looks like a
+broken app rather than a missing privilege.
+
+⚠️ **Person users hold `DEFAULT_ROLE = PUBLIC` and no secondary roles** (2026-08-24), so
+a viewer must be granted a role that carries these usages, and must select it. `PUBLIC`
+holds no tier in either grid, which is the fail-closed default and is asserted by N-20a/b.
+
+### H.6 Cost, before you leave five apps running
+
+Each running app pins a service, and a pool cannot auto-suspend while any service runs.
+Services **pack** — five apps do not mean five nodes; a flat 2.637 credits/day is one
+`CPU_X64_S` node, measured while two to three services ran (ADR-010 CP-5). But one pinned
+node is roughly **80 credits/month**, an order of magnitude above the warehouse behind it.
+
+There is **no scriptable way to stop a running Streamlit service**: `ALTER SERVICE …
+SUSPEND` fails even as `ACCOUNTADMIN`, `ALTER STREAMLIT … SUSPEND` does not exist, and
+`IDLE_AUTO_SHUTDOWN_TIME_SECONDS` floors at 24 hours. The only levers are the UI **Active**
+toggle and `DROP`.
+
+```sql
+-- What the pool is actually doing. Watch implied node-hours, not credits.
+SELECT compute_pool_name,
+       DATE_TRUNC('day', start_time)      AS day,
+       ROUND(SUM(credits_used), 3)        AS credits,
+       ROUND(SUM(credits_used) / 0.11, 1) AS implied_node_hours
+FROM SNOWFLAKE.ACCOUNT_USAGE.SNOWPARK_CONTAINER_SERVICES_HISTORY
+WHERE start_time > DATEADD('day', -14, CURRENT_TIMESTAMP())
+GROUP BY 1, 2 ORDER BY 2 DESC, 1;
+```
+
+A move from ~24 to ~48 node-hours/day means a second node became durably active.
+
+---
+
 
 ## I. Dependencies: declaring one means declaring all
 
