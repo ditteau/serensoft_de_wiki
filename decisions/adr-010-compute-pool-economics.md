@@ -72,9 +72,29 @@ Streamlit object in the account is currently unset.
 > least a full day. **An app opened daily never idles out and bills continuously.** The
 > only per-session lever is the manual **Active** toggle in the app UI.
 
-**2. No dedicated per-school pools yet.** Each pool carries a standing `MIN_NODES ≥ 1`
-floor, so three provisioned schools with dedicated pools would roughly triple today's
-baseline in order to serve the one school that actually uses SiS.
+**2. ~~No dedicated per-school pools yet.~~ Dedicated per-school pools, adopted the same
+day.** *(Amended 2026-08-29, LVP. This clause originally deferred dedicated pools on the
+grounds that each pool's `MIN_NODES ≥ 1` floor would roughly triple the baseline. **That
+reasoning was wrong.** A pool bills for running services, not for existing:
+`SYSTEM_COMPUTE_POOL_GPU` has existed since 2026-02-24, is suspended, and appears **zero
+times** in six months of metering. A per-school pool therefore costs exactly what that
+school's apps consume, and a school with no apps costs nothing. The only real penalty is
+packing — two schools active **simultaneously** pay two nodes where a shared pool might
+have used one, which surfaces only under concurrent multi-school load, i.e. exactly when
+attribution matters most.)*
+
+`DEMEAU_POOL_APPS_PROD` created and `GOVERNANCE_SIS` moved onto it
+(`add_school_app_compute_pools_2026-08-29.sql`). Naming is
+`{SCHOOL}_POOL_APPS_{ENV}`, env-suffixed so a DEV experiment cannot affect the latency
+of a PROD app during a client demo. `MIN_NODES 1 / MAX_NODES 2 / AUTO_SUSPEND_SECS 300`,
+created `INITIALLY_SUSPENDED` so creation does not start the billing clock.
+
+Pools are created **on demand, not in advance** — Anselm and Merrimack have no Streamlit
+apps, and empty pools would be free but meaningless.
+
+> ⚠️ **Attribution is not retroactive.** Everything metered before this migration is
+> pooled under `SYSTEM_COMPUTE_POOL_CPU` and cannot be split by school. The 25.45
+> credits already spent stay unattributable.
 
 **3. The monitoring gap is recorded as an open item, not solved.** No mechanism is being
 built in this ADR. See Open Decisions below.
@@ -84,7 +104,8 @@ built in this ADR. See Open Decisions below.
 | # | Question | Owner | Blocking |
 |---|---|---|---|
 | **CP-1** | What mechanism watches compute pool spend, given resource monitors structurally cannot? Candidates: a scheduled query over `ACCOUNT_USAGE.SNOWPARK_CONTAINER_SERVICES_HISTORY` with alerting, or a periodic manual review. | WDT | No — but the exposure is uncapped |
-| **CP-2** | Do dedicated per-school pools become a **go-live requirement** for the first paying tenant? Cost attribution per tenant is a billing requirement, not a preference. | WDT | First real tenant |
+| ~~**CP-2**~~ | ~~Do dedicated per-school pools become a go-live requirement?~~ **RESOLVED 2026-08-29 (LVP): yes, per-school pools for billing attribution.** Adopted immediately rather than deferred, once the cost objection was found to be unfounded. `DEMEAU_POOL_APPS_PROD` is live. | LVP | Closed |
+| **CP-5** | `MAX_NODES = 2` is sized for one demo school with one app. D-1's per-persona topology means N apps per tenant — four for DEMEAU today. Does the ceiling need raising, and does per-persona multiply the node floor? | LVP / WDT | Before D-1 apps are built |
 | **CP-3** | Who is responsible for suspending abandoned preview services, and is there a routine sweep? Previewing leaves a billing service behind with no prompt. | Unassigned | No |
 | **CP-4** | Should apps be suspended between demos as standing practice, accepting container cold-start latency in front of a client? | LVP | Before first client demo |
 
@@ -114,13 +135,18 @@ built in this ADR. See Open Decisions below.
   when consumption is highest.
 - **Manual suspension is the only per-session control**, which means it depends on
   someone remembering. That is the failure mode that produced this ADR.
-- Shared pool means **consumption is not attributable per school**, so there is no way
-  to bill or even report a tenant's true cost today.
-- Shared pool retains **noisy-neighbour risk**: another service on
-  `SYSTEM_COMPUTE_POOL_CPU` can affect demo latency, and the pool is `is_exclusive:
-  false`.
+- **Attribution starts now and is not retroactive.** The 25.45 credits already spent on
+  the shared pool cannot be split by school.
+- **Packing inefficiency under concurrent load.** Each school's pool has its own
+  `MIN_NODES = 1` floor, so N schools active at once cost N nodes where a shared pool
+  might have packed them onto fewer. Accepted as the price of attribution.
+- **A pool per school is a pool per school to operate** — each needs its own grants,
+  sizing review and eventual monitoring. That multiplies with tenant count.
 - The two abandoned services in `USER$LVANPELT.PUBLIC` are in a personal database and
-  were left untouched by this decision. They continue to bill until suspended by hand.
+  were left untouched. They continue to bill against the shared pool — unattributable to
+  any school — until suspended by hand.
+- `MAX_NODES = 2` is sized for today's single app and will need revisiting when D-1
+  lands. See CP-5.
 
 ---
 
@@ -128,8 +154,8 @@ built in this ADR. See Open Decisions below.
 
 | Option | Pros | Cons |
 |--------|------|------|
-| **Shared pool + 24h idle shutdown (chosen)** | No new infrastructure; stops the indefinite tail; keeps cost at one baseline | Uncapped; no attribution; ineffective for daily-use apps |
-| Dedicated pool per school | Cost attributable per tenant; removes noisy neighbour; the right end state | `MIN_NODES ≥ 1` floor per pool ≈ 3× baseline today, to serve one active school; routes through WDT as an infrastructure scope change |
+| **Dedicated pool per school + 24h idle shutdown (chosen)** | Cost attributable per tenant, which is a billing requirement; removes noisy-neighbour risk; costs nothing for schools with no apps, since suspended pools do not bill | Not retroactive; packing penalty under concurrent multi-school load; one more object per school to operate |
+| Shared pool, defer dedicated pools | No new infrastructure | No attribution — and the cost argument for deferring turned out to be false, since pools bill for running services rather than for existing |
 | Status quo — no idle shutdown, no ADR | Zero effort | ~58 to 79 credits/month accruing invisibly and indefinitely; the situation that prompted this |
 | Suspend the pool itself between demos | Strongest cost control available | A suspended pool cannot serve any app; breaks anyone opening a dashboard unannounced; does not survive multi-tenant use |
 | Move dashboards back to warehouse-runtime SiS | Warehouse runtime is covered by resource monitors, so the spend becomes governable with existing tooling | Abandons Workspaces and the git-backed deployment path; warehouse runtime cannot use `pyproject.toml` dependency management. Worth revisiting if CP-1 finds no workable mechanism |
