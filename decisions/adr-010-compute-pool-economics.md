@@ -105,11 +105,61 @@ built in this ADR. See Open Decisions below.
 |---|---|---|---|
 | **CP-1** | What mechanism watches compute pool spend, given resource monitors structurally cannot? Candidates: a scheduled query over `ACCOUNT_USAGE.SNOWPARK_CONTAINER_SERVICES_HISTORY` with alerting, or a periodic manual review. | WDT | No — but the exposure is uncapped |
 | ~~**CP-2**~~ | ~~Do dedicated per-school pools become a go-live requirement?~~ **RESOLVED 2026-08-29 (LVP): yes, per-school pools for billing attribution.** Adopted immediately rather than deferred, once the cost objection was found to be unfounded. `DEMEAU_POOL_APPS_PROD` is live. | LVP | Closed |
-| ~~**CP-5**~~ | ~~`MAX_NODES = 2` is sized for one demo school with one app. Does the ceiling need raising, and does per-persona multiply the node floor?~~ **RESOLVED 2026-08-30 (LVP): raised to 4; and no, per-persona does *not* multiply the node floor.** See below — the premise was measurably wrong. | LVP | Closed |
+| **CP-5** | ~~`MAX_NODES = 2` is sized for one demo school with one app.~~ ⚠️ **RE-OPENED 2026-08-30.** First resolved as "services pack onto a node"; that was **wrong** — measured 3 services = 3 active_nodes the same evening. One node per running app, so 10 apps left Active is ~800 credits/month, not ~80. `MAX_NODES` raised 4 → 10 to unblock. **What remains open is the spend, not the ceiling**: see CP-3/CP-4, now the load-bearing controls. | LVP / WDT | ⚠️ Spend is uncapped and unmonitored (CP-1) |
 | **CP-3** | Who is responsible for suspending abandoned preview services, and is there a routine sweep? Previewing leaves a billing service behind with no prompt. ⚠️ **Harder than it looks — see below.** | Unassigned | No |
 | **CP-4** | Should apps be suspended between demos as standing practice, accepting container cold-start latency in front of a client? | LVP | Before first client demo |
 
-#### CP-5 resolved — services pack onto a node
+#### ⚠️ CP-5 CORRECTED 2026-08-30 — services do NOT pack. One node per running service.
+
+**The section below is wrong and is kept for the reasoning error, which is the useful
+part.** It concluded that Streamlit services pack onto a node. Direct observation the
+same evening contradicts it:
+
+```
+SHOW COMPUTE POOLS;
+DEMEAU_POOL_APPS_PROD   ACTIVE   num_services 3   active_nodes 3
+```
+
+Three running services, three nodes. Hourly metering agrees — `credits_used / 0.11`
+gives 1.63, 1.97, 2.31 and 2.43 implied nodes across the hours when two to three
+services were up.
+
+**Where the reasoning failed, and it is a generalisable mistake.** The conclusion took
+`SYSTEM_COMPUTE_POOL_CPU`'s *sustained* 2.637 credits/day — a flat rate spanning weeks
+from 2026-07-20 — and divided it by a service count observed *once*, on 2026-08-29. But
+the extra services were created on 19 and 29 August. For most of that period **only one
+service was running**, so 2.637/day = one node was entirely consistent with one service.
+**A long-run average was compared against a point-in-time count.** The arithmetic was
+right and the denominator was from a different period.
+
+**What this changes:**
+
+| | Claimed | Actual |
+|---|---|---|
+| Nodes for N running apps | ~1 | **N** |
+| Cost of 10 apps left Active | ~80 credits/month | **~800 credits/month** |
+| What `MAX_NODES` bounds | a runaway | **how many apps can run at once** |
+
+`MAX_NODES` raised **4 → 10** on 2026-08-30, after the enrollment dashboard failed to
+start with *"The selected compute pool is unable to start your app… the pool is full"*.
+Ten is the planned app count: five persona apps plus five dashboards.
+
+⚠️ **Raising the ceiling costs nothing by itself** — a pool bills for *running* nodes,
+which is why `SYSTEM_COMPUTE_POOL_CPU` sits at 150 and `SYSTEM_COMPUTE_POOL_GPU` has
+never metered. But the earlier argument for keeping it low ("the ceiling is the only
+bound on a runaway") **was predicated on packing and does not survive**. With one node
+per app a low ceiling does not bound spend; it blocks legitimate apps, and blocks them
+for up to 24 hours because `IDLE_AUTO_SHUTDOWN_TIME_SECONDS` floors there.
+
+⚠️ **So the cost control is app lifecycle, not the ceiling.** Every app left `Active`
+is ~0.11 credits/hour ≈ 80 credits/month, indefinitely. Ten of them is roughly 800.
+That makes CP-3 and CP-4 — who suspends apps, and whether they are suspended between
+demos — materially more urgent than they looked when this ADR was written. And there is
+still no scriptable way to stop a running service: the UI **Active** toggle or `DROP`.
+
+---
+
+#### ~~CP-5 resolved — services pack onto a node~~ (SUPERSEDED, see above)
 
 *Added 2026-08-30 (LVP), applied by `resize_demeau_app_pool_cp5_2026-08-30.sql`.*
 

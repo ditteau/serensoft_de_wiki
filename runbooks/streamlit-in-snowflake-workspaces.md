@@ -641,10 +641,17 @@ holds no tier in either grid, which is the fail-closed default and is asserted b
 
 ### H.6 Cost, before you leave five apps running
 
-Each running app pins a service, and a pool cannot auto-suspend while any service runs.
-Services **pack** — five apps do not mean five nodes; a flat 2.637 credits/day is one
-`CPU_X64_S` node, measured while two to three services ran (ADR-010 CP-5). But one pinned
-node is roughly **80 credits/month**, an order of magnitude above the warehouse behind it.
+Each running app pins a service, a pool cannot auto-suspend while any service runs, and
+**each running service takes its own node** — measured 2026-08-30: `num_services 3` /
+`active_nodes 3` on `DEMEAU_POOL_APPS_PROD`.
+
+⚠️ **An earlier version of this section said services PACK onto a node. That was wrong**
+(ADR-010 CP-5, corrected). One node is ~0.11 credits/hour ≈ **80 credits/month**, so the
+cost is **per app left Active**: ten apps is roughly **800 credits/month** against a
+warehouse consuming ~6. `MAX_NODES` is 10 — it bounds how many apps can run at once, not
+spend. Below the app count you get *"The selected compute pool is unable to start your
+app… the pool is full"*, and the blocked app stays blocked until another idles out, which
+floors at 24 hours.
 
 There is **no scriptable way to stop a running Streamlit service**: `ALTER SERVICE …
 SUSPEND` fails even as `ACCOUNTADMIN`, `ALTER STREAMLIT … SUSPEND` does not exist, and
