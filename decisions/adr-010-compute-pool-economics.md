@@ -105,9 +105,76 @@ built in this ADR. See Open Decisions below.
 |---|---|---|---|
 | **CP-1** | What mechanism watches compute pool spend, given resource monitors structurally cannot? Candidates: a scheduled query over `ACCOUNT_USAGE.SNOWPARK_CONTAINER_SERVICES_HISTORY` with alerting, or a periodic manual review. | WDT | No — but the exposure is uncapped |
 | ~~**CP-2**~~ | ~~Do dedicated per-school pools become a go-live requirement?~~ **RESOLVED 2026-08-29 (LVP): yes, per-school pools for billing attribution.** Adopted immediately rather than deferred, once the cost objection was found to be unfounded. `DEMEAU_POOL_APPS_PROD` is live. | LVP | Closed |
-| **CP-5** | `MAX_NODES = 2` is sized for one demo school with one app. D-1's per-persona topology means N apps per tenant — four for DEMEAU today. Does the ceiling need raising, and does per-persona multiply the node floor? | LVP / WDT | Before D-1 apps are built |
+| ~~**CP-5**~~ | ~~`MAX_NODES = 2` is sized for one demo school with one app. Does the ceiling need raising, and does per-persona multiply the node floor?~~ **RESOLVED 2026-08-30 (LVP): raised to 4; and no, per-persona does *not* multiply the node floor.** See below — the premise was measurably wrong. | LVP | Closed |
 | **CP-3** | Who is responsible for suspending abandoned preview services, and is there a routine sweep? Previewing leaves a billing service behind with no prompt. ⚠️ **Harder than it looks — see below.** | Unassigned | No |
 | **CP-4** | Should apps be suspended between demos as standing practice, accepting container cold-start latency in front of a client? | LVP | Before first client demo |
+
+#### CP-5 resolved — services pack onto a node
+
+*Added 2026-08-30 (LVP), applied by `resize_demeau_app_pool_cp5_2026-08-30.sql`.*
+
+CP-5 asked two questions. The second one had an answer sitting in this ADR's own figures.
+
+**Does per-persona multiply the node floor? No.** `CPU_X64_S` bills at **0.11
+credits/node-hour**. This ADR records `SYSTEM_COMPUTE_POOL_CPU` burning a flat **2.637
+credits/day**, which is 0.1099 credits/hour — **exactly one node** — and it did so while
+running **two to three** Streamlit services throughout. Services pack onto a node. Node
+count follows resource demand, not service count, and five applications do not imply five
+nodes.
+
+> ⚠️ **The daily figures above were the evidence all along; nobody had divided them by the
+> node rate.** The original CP-5 wording ("does per-persona multiply the node floor?")
+> assumed a per-service floor that the account's own metering already disproved. Worth
+> keeping as a reminder that a measurement can be present and still unread.
+
+> ⚠️ **This does not make applications free, and the correct reading is nearly the
+> opposite.** ~2.64 credits/day is one node pinned by a running service — roughly **80
+> credits/month**, still an order of magnitude above the `DEMEAU_ANALYTICS_PROD` warehouse
+> it supports. What the finding says is that spend is driven by **whether any app is
+> running**, not by how many. Five apps left open cost about what one app left open costs.
+> The lever is idle apps (CP-3, CP-4), not app count.
+
+**Does the ceiling need raising? Yes, to 4 — because a ceiling is not a cost.** A pool
+bills for *running* nodes: `SYSTEM_COMPUTE_POOL_CPU` has carried `MAX_NODES = 150` for six
+months at one node's spend, and `SYSTEM_COMPUTE_POOL_GPU` has existed since February and
+appears **zero times** in six months of metering. Raising the ceiling costs nothing while
+idle, and buys headroom for the one moment it matters — several personas opened at once
+during a client demo, where the failure mode is an app that will not start in front of the
+client.
+
+**4 rather than 8, deliberately.** Resource monitors structurally cannot meter compute
+pools — the central finding of this ADR, and **CP-1 is still open** — so the ceiling is
+currently the *only* bound on a runaway. A ceiling with no monitor behind it should stay
+close to measured need. 4 is double the observed requirement for five apps and bounds an
+unnoticed runaway at ~10.5 credits/day rather than ~21.
+
+`MIN_NODES` stays 1; `AUTO_SUSPEND_SECS` stays 300 and remains ineffective while any
+service runs, which is untouched by this change.
+
+**Watch implied node-hours, not credits:**
+
+```sql
+SELECT compute_pool_name,
+       DATE_TRUNC('day', start_time)      AS day,
+       ROUND(SUM(credits_used), 3)        AS credits,
+       ROUND(SUM(credits_used) / 0.11, 1) AS implied_node_hours
+FROM SNOWFLAKE.ACCOUNT_USAGE.SNOWPARK_CONTAINER_SERVICES_HISTORY
+WHERE start_time > DATEADD('day', -14, CURRENT_TIMESTAMP())
+GROUP BY 1, 2 ORDER BY 2 DESC, 1;
+```
+
+A move from ~24 to ~48 node-hours/day means a second node became durably active. At five
+apps that would mean the packing behaviour stopped holding — which is a reason to reopen
+CP-5, not to raise the ceiling again reflexively.
+
+**Scope of this decision:** DEMEAU PROD only, five applications (Registrar, FA, IR,
+Admissions, Finance). Anselm and Merrimack still have no apps and no pools, per the
+on-demand rule above. ⚠️ Cabinet and Student Success were considered and **excluded**:
+both are `AGGREGATED` with no `DISTRIBUTE` grant, and granting one trips the I.4
+suppression interlock (access policy O-7b) immediately.
+
+---
+
 
 #### There is no SQL way to stop a running Streamlit service
 
