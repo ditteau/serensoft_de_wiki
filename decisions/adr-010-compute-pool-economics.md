@@ -106,8 +106,36 @@ built in this ADR. See Open Decisions below.
 | **CP-1** | What mechanism watches compute pool spend, given resource monitors structurally cannot? Candidates: a scheduled query over `ACCOUNT_USAGE.SNOWPARK_CONTAINER_SERVICES_HISTORY` with alerting, or a periodic manual review. | WDT | No — but the exposure is uncapped |
 | ~~**CP-2**~~ | ~~Do dedicated per-school pools become a go-live requirement?~~ **RESOLVED 2026-08-29 (LVP): yes, per-school pools for billing attribution.** Adopted immediately rather than deferred, once the cost objection was found to be unfounded. `DEMEAU_POOL_APPS_PROD` is live. | LVP | Closed |
 | **CP-5** | `MAX_NODES = 2` is sized for one demo school with one app. D-1's per-persona topology means N apps per tenant — four for DEMEAU today. Does the ceiling need raising, and does per-persona multiply the node floor? | LVP / WDT | Before D-1 apps are built |
-| **CP-3** | Who is responsible for suspending abandoned preview services, and is there a routine sweep? Previewing leaves a billing service behind with no prompt. | Unassigned | No |
+| **CP-3** | Who is responsible for suspending abandoned preview services, and is there a routine sweep? Previewing leaves a billing service behind with no prompt. ⚠️ **Harder than it looks — see below.** | Unassigned | No |
 | **CP-4** | Should apps be suspended between demos as standing practice, accepting container cold-start latency in front of a client? | LVP | Before first client demo |
+
+#### There is no SQL way to stop a running Streamlit service
+
+Established 2026-08-29 while clearing the abandoned services. Every obvious lever fails:
+
+| Attempt | Result |
+|---|---|
+| `ALTER SERVICE … SUSPEND` | `SQL access control error` — even as `ACCOUNTADMIN`. The services are `SYSTEM$MANAGED`; the Streamlit object owns them |
+| `ALTER STREAMLIT … SUSPEND` | `SQL compilation error` — no such command |
+| `ALTER STREAMLIT … SET IDLE_AUTO_SHUTDOWN_TIME_SECONDS` | Works, but the floor is 24 hours |
+| `DROP STREAMLIT` | Works. Destroys the app |
+
+So the complete set of remedies is: **the UI `Active` toggle, a ≥24-hour idle timer, or
+deletion.** Nothing scriptable stops a service while keeping the app.
+
+That has a direct consequence for CP-3: a routine sweep **cannot be automated as a task
+or scheduled query**. Any cleanup is either a person clicking a toggle, or dropping
+apps — which is only safe for previews. It also means an app someone opens daily can be
+stopped only by hand.
+
+Two abandoned preview apps (`Preview of … Test_Gov`, `Preview of …
+ditteau_data_transform/streamlit`) were dropped rather than suspended for exactly this
+reason. Both billing services belonged to previews; the one real personal app was
+already suspended and costing nothing.
+
+⚠️ **Previews are the main leak.** Both came from clicking Run in a Workspace. A preview
+creates a durable, billing service with no prompt, no expiry and no scriptable off
+switch, and it survives long after the tab is closed.
 
 ---
 
