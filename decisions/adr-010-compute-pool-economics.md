@@ -267,8 +267,19 @@ pool's `active_nodes` fell **3 → 2**. Applied by
 > keeps the application and releases the node; Drop destroys the service. For a deployed
 > app you want **Suspend** — Drop is for stray previews.
 
+> ⚠️ **The UI Suspend runs as your session's CURRENT role, and refuses under `SYSADMIN`**
+> with `002003 … does not exist or not authorized` — a missing privilege wearing a
+> message about existence. `OPERATE` is held by `DITTEAU_ADMIN`; `ACCOUNTADMIN` inherits
+> it via `SECURITYADMIN`; `SYSADMIN` is in neither path. Measured on one service in one
+> minute: `DITTEAU_ADMIN` ✅ · `ACCOUNTADMIN` ✅ · `SYSADMIN` ❌. The corner role badge is
+> not proof of what a page context is using, and deploying requires switching roles
+> constantly — so switch explicitly and retry before investigating the service.
+
 > ⚠️ **Watch `active_nodes`, not the service state.** A `SUSPENDED` service whose node is
 > still active is still billing until the pool scales down (`AUTO_SUSPEND_SECS 300`).
+> Measured 2026-08-30 with **all four** services suspended: `state IDLE`,
+> `active_nodes 0`, but `idle_nodes 2, target_nodes 2` — still metering. A screen full of
+> `Suspended` badges is not evidence a demo cost nothing.
 
 **What this changes.** CP-3 (who suspends abandoned apps) and CP-4 (suspend between
 demos) were both blocked on "no scriptable lever exists" — they are now buildable, and a

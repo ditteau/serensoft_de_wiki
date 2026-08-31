@@ -676,6 +676,44 @@ still does not exist and `IDLE_AUTO_SHUTDOWN_TIME_SECONDS` still floors at 24 ho
 the *idle timer* remains useless as a between-sessions control — but a scheduled sweep is
 now buildable. See H.1b and ADR-010.
 
+⚠️ **Suspend as `DITTEAU_ADMIN` or `ACCOUNTADMIN`. As `SYSADMIN` it fails, and the
+message names the wrong problem.** `OPERATE` was granted to `DITTEAU_ADMIN` only
+(`add_service_operate_grants_2026-08-30.sql`); `ACCOUNTADMIN` inherits it via
+`SECURITYADMIN`, to which `DITTEAU_ADMIN` is granted. `SYSADMIN` is in neither path and
+returns:
+
+```
+002003 (02000): SQL compilation error:
+Service 'DEMEAU_DD_PROD.DISTRIBUTE.STPLATSTREAMLIT392910720' does not exist or not authorized.
+```
+
+Measured 2026-08-30 on the same service, same statement, in the same minute:
+`DITTEAU_ADMIN` ✅ · `ACCOUNTADMIN` ✅ · `SYSADMIN` ❌. **Nothing was wrong with the
+service.** This is the account's standing failure mode — a missing privilege wearing a
+message about existence, the same shape as `SYSADMIN` reading `DEMEAU_DD_PROD`'s
+modelled layer as empty. Read *"does not exist or not authorized"* as **"try another
+role"** before concluding anything about the object.
+
+⚠️ **This bites hardest through the UI**, because the ⋮ **Suspend** on the compute-pool
+page runs under the session's *current* role, which is not always the one you last
+selected — and during a deploy session you are switching roles constantly (E.1). The
+role badge in the corner is not proof of what a given page context is using. If a
+suspend is refused, switch role explicitly and retry before investigating the service.
+
+```bash
+SNOWFLAKE_DEV_ROLE=DITTEAU_ADMIN QUERY_WAREHOUSE=DEMEAU_ANALYTICS_PROD \
+  PATH="/Users/laurievanpelt/testenv/bin:$PATH" python scripts/query_snowflake.py \
+  "ALTER SERVICE DEMEAU_DD_PROD.DISTRIBUTE.<service> SUSPEND"
+```
+
+✅ **The `ON FUTURE SERVICES` grant is confirmed working against a real redeploy**, not
+just argued from the docs. `DEMEAU_ENROLLMENT`'s service was created at `00:33:44.620`
+and `SHOW GRANTS ON SERVICE` records `OPERATE … granted_by SYSTEM$MANAGED` at
+`00:33:44.715` — attached automatically, 0.7s later, to a service that did not exist
+when the grant was written. Since every deploy mints a new `STPLATSTREAMLIT<n>` name,
+this is the half that keeps any sweep alive; re-check it after a redeploy, because when
+it lapses the sweep keeps running and silently stops suspending anything.
+
 **The fastest check is the UI, and it is live.** Snowsight → **Manage » Compute »
 Compute pools**. It lists every pool with `NUMBER OF JOBS`, `ACTIVE NODES`, `IDLE
 NODES`, `AUTO SUSPEND`, `AUTO RESUME` and `RESUMED ON`.
@@ -688,6 +726,12 @@ running that you did not intend.
 
 ⚠️ **`IDLE NODES` above zero means paying for nothing** — nodes provisioned with no
 service on them, waiting out `AUTO SUSPEND`.
+
+⚠️ **Suspending every service does not stop the meter.** Measured 2026-08-30 with all
+four services suspended: the pool reported `state IDLE`, `active_nodes 0` — and
+`idle_nodes 2, target_nodes 2`. Those two nodes bill until `AUTO_SUSPEND_SECS` (300)
+elapses. A screen full of `Suspended` badges is not evidence that a demo cost nothing;
+re-read the pool a few minutes later.
 
 ⚠️ **The UI shows state, not spend.** It cannot tell you what a pool has cost; for that
 you need the metering query below, which lags up to ~2h. Use the UI to answer *"what is
