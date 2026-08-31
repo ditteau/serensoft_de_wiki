@@ -507,9 +507,25 @@ DROP STREAMLIT "USER$LVANPELT".PUBLIC.<name>;
 ```
 
 ⚠️ **`DROP STREAMLIT` fails as `ACCOUNTADMIN`** with *"must have OWNERSHIP granted on
-STREAMLIT …"*. It needs the app's owner role. ADR-010 lists `DROP` as the one lever that
-works for a running app without noting that, which matters when you are trying to stop a
-runaway in a hurry.
+STREAMLIT …"*. It needs the app's owner role.
+
+⚠️ **For a DEPLOYED app, suspend rather than drop.** Corrected 2026-08-30: ADR-010 said
+no SQL lever exists, which was wrong — `ALTER SERVICE … SUSPEND` works once `OPERATE` is
+granted, and `add_service_operate_grants_2026-08-30.sql` grants it to `DITTEAU_ADMIN` on
+all and future services in `DEMEAU_DD_PROD.DISTRIBUTE`.
+
+```sql
+SHOW SERVICES IN COMPUTE POOL DEMEAU_POOL_APPS_PROD;   -- name + "Managed by" app
+ALTER SERVICE DEMEAU_DD_PROD.DISTRIBUTE.<service> SUSPEND;
+```
+
+The UI equivalent is **Manage » Compute » Compute pools » `<pool>` » Services**, which
+has a per-service **Suspend** / **Drop** menu. **Suspend** keeps the application and
+releases its node; **Drop** destroys the service. Suspend a deployed app; drop a stray
+preview.
+
+⚠️ **Watch `active_nodes`, not the service state.** A `SUSPENDED` service whose node is
+still active is still billing until the pool scales down.
 
 ### H.2 The five passes
 
@@ -653,13 +669,41 @@ spend. Below the app count you get *"The selected compute pool is unable to star
 app… the pool is full"*, and the blocked app stays blocked until another idles out, which
 floors at 24 hours.
 
-There is **no scriptable way to stop a running Streamlit service**: `ALTER SERVICE …
-SUSPEND` fails even as `ACCOUNTADMIN`, `ALTER STREAMLIT … SUSPEND` does not exist, and
-`IDLE_AUTO_SHUTDOWN_TIME_SECONDS` floors at 24 hours. The only levers are the UI **Active**
-toggle and `DROP`.
+⚠️ **Corrected 2026-08-30: there IS a scriptable way.** `ALTER SERVICE … SUSPEND`
+works once `OPERATE` is granted — it failed as `ACCOUNTADMIN` only because nobody held
+that privilege, not because the services are unstoppable. `ALTER STREAMLIT … SUSPEND`
+still does not exist and `IDLE_AUTO_SHUTDOWN_TIME_SECONDS` still floors at 24 hours, so
+the *idle timer* remains useless as a between-sessions control — but a scheduled sweep is
+now buildable. See H.1b and ADR-010.
+
+**The fastest check is the UI, and it is live.** Snowsight → **Manage » Compute »
+Compute pools**. It lists every pool with `NUMBER OF JOBS`, `ACTIVE NODES`, `IDLE
+NODES`, `AUTO SUSPEND`, `AUTO RESUME` and `RESUMED ON`.
+
+⚠️ **`ACTIVE NODES` is the number to read**, and it is the one that disproved the
+packing claim: three running applications showed **3 active nodes / 0 idle**, matching
+`SHOW COMPUTE POOLS` exactly (`active_nodes 3, idle_nodes 0, target_nodes 3`). If that
+number is not roughly equal to the number of apps you expect to be running, something is
+running that you did not intend.
+
+⚠️ **`IDLE NODES` above zero means paying for nothing** — nodes provisioned with no
+service on them, waiting out `AUTO SUSPEND`.
+
+⚠️ **The UI shows state, not spend.** It cannot tell you what a pool has cost; for that
+you need the metering query below, which lags up to ~2h. Use the UI to answer *"what is
+running right now"* and the query to answer *"what has this cost"*. Neither substitutes
+for the other, and the six-week burn ADR-010 records was invisible to both because
+nobody looked at either.
+
+The equivalent in SQL, which also works from a script:
 
 ```sql
--- What the pool is actually doing. Watch implied node-hours, not credits.
+SHOW COMPUTE POOLS;   -- active_nodes, idle_nodes, target_nodes, num_services
+SHOW SERVICES IN ACCOUNT;   -- which app each running service belongs to
+```
+
+```sql
+-- What the pool has actually cost. Watch implied node-hours, not credits.
 SELECT compute_pool_name,
        DATE_TRUNC('day', start_time)      AS day,
        ROUND(SUM(credits_used), 3)        AS credits,

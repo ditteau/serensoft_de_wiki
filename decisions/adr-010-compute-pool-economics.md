@@ -106,8 +106,8 @@ built in this ADR. See Open Decisions below.
 | **CP-1** | What mechanism watches compute pool spend, given resource monitors structurally cannot? Candidates: a scheduled query over `ACCOUNT_USAGE.SNOWPARK_CONTAINER_SERVICES_HISTORY` with alerting, or a periodic manual review. | WDT | No — but the exposure is uncapped |
 | ~~**CP-2**~~ | ~~Do dedicated per-school pools become a go-live requirement?~~ **RESOLVED 2026-08-29 (LVP): yes, per-school pools for billing attribution.** Adopted immediately rather than deferred, once the cost objection was found to be unfounded. `DEMEAU_POOL_APPS_PROD` is live. | LVP | Closed |
 | **CP-5** | ~~`MAX_NODES = 2` is sized for one demo school with one app.~~ ⚠️ **RE-OPENED 2026-08-30.** First resolved as "services pack onto a node"; that was **wrong** — measured 3 services = 3 active_nodes the same evening. One node per running app, so 10 apps left Active is ~800 credits/month, not ~80. `MAX_NODES` raised 4 → 10 to unblock. **What remains open is the spend, not the ceiling**: see CP-3/CP-4, now the load-bearing controls. | LVP / WDT | ⚠️ Spend is uncapped and unmonitored (CP-1) |
-| **CP-3** | Who is responsible for suspending abandoned preview services, and is there a routine sweep? Previewing leaves a billing service behind with no prompt. ⚠️ **Harder than it looks — see below.** | Unassigned | No |
-| **CP-4** | Should apps be suspended between demos as standing practice, accepting container cold-start latency in front of a client? | LVP | Before first client demo |
+| **CP-3** | Who is responsible for suspending abandoned preview services, and is there a routine sweep? ⚠️ **Unblocked 2026-08-30** — `ALTER SERVICE … SUSPEND` works once `OPERATE` is granted, so a scheduled sweep is now buildable. What remains is the POLICY: there is no "last accessed" on a service, so idle detection needs designing rather than assuming. | Unassigned | No — but now tractable |
+| **CP-4** | Should apps be suspended between demos as standing practice, accepting container cold-start latency in front of a client? ⚠️ **Now scriptable** (2026-08-30) and materially more urgent, since CP-5's correction makes it ~80 credits/month per app left Active. | LVP | Before first client demo |
 
 #### ⚠️ CP-5 CORRECTED 2026-08-30 — services do NOT pack. One node per running service.
 
@@ -226,7 +226,65 @@ suppression interlock (access policy O-7b) immediately.
 ---
 
 
-#### There is no SQL way to stop a running Streamlit service
+#### ⚠️ CORRECTED 2026-08-30 — there IS a SQL way to stop a running Streamlit service
+
+**The section below is wrong. The observation was right and the diagnosis was not.** It
+concluded that services cannot be suspended from SQL because they are `SYSTEM$MANAGED`
+and the Streamlit object owns them. The real reason `ALTER SERVICE … SUSPEND` failed is
+that **`OPERATE` had never been granted to anyone**, and `ACCOUNTADMIN` does not hold it
+implicitly on these objects.
+
+The tell only appears when a **different role** is tried. As `ACCOUNTADMIN` the error is
+a bare `SQL access control error`, which reads as "not permitted, full stop". As the
+app's owner role it becomes:
+
+```
+Insufficient privileges to operate on service 'STPLATSTREAMLIT392910704'.
+Your primary role ... must have OPERATE granted on SERVICE ...
+```
+
+`OPERATE` is a grantable privilege, not an ownership wall.
+
+```sql
+GRANT OPERATE ON ALL SERVICES    IN SCHEMA DEMEAU_DD_PROD.DISTRIBUTE TO ROLE DITTEAU_ADMIN;
+GRANT OPERATE ON FUTURE SERVICES IN SCHEMA DEMEAU_DD_PROD.DISTRIBUTE TO ROLE DITTEAU_ADMIN;
+
+ALTER SERVICE DEMEAU_DD_PROD.DISTRIBUTE.STPLATSTREAMLIT392910704 SUSPEND;
+```
+
+Measured end to end on 2026-08-30: the service went `SUSPENDING` → `SUSPENDED` and the
+pool's `active_nodes` fell **3 → 2**. Applied by
+`add_service_operate_grants_2026-08-30.sql`.
+
+> ⚠️ **`ON FUTURE SERVICES` is the load-bearing half.** A Streamlit service is recreated
+> with a new system-generated name on every redeploy, so a per-service grant is dead the
+> next time the app is deployed. Without the future grant this capability decays
+> silently, and the first symptom is a sweep that has quietly stopped suspending
+> anything.
+
+> ⚠️ **The UI offers this too**, which is how it was found: **Manage » Compute » Compute
+> pools » `<pool>` » Services** has a per-service **Suspend** / **Drop** menu. Suspend
+> keeps the application and releases the node; Drop destroys the service. For a deployed
+> app you want **Suspend** — Drop is for stray previews.
+
+> ⚠️ **Watch `active_nodes`, not the service state.** A `SUSPENDED` service whose node is
+> still active is still billing until the pool scales down (`AUTO_SUSPEND_SECS 300`).
+
+**What this changes.** CP-3 (who suspends abandoned apps) and CP-4 (suspend between
+demos) were both blocked on "no scriptable lever exists" — they are now buildable, and a
+CP-1 monitor can **act** rather than only report. What remains undecided is *which*
+services to suspend and *on what trigger*: there is no "last accessed" timestamp on a
+service, so idle detection needs designing, and suspending a service a client is
+mid-demo on is worse than the spend it saves.
+
+**The lesson worth keeping**, and it is the second time in one day: this ADR reached a
+structural conclusion — "SYSTEM$MANAGED objects cannot be suspended" — from a single
+failed attempt under a single role. One more role would have produced an error message
+that named the missing privilege outright.
+
+---
+
+#### ~~There is no SQL way to stop a running Streamlit service~~ (SUPERSEDED, see above)
 
 Established 2026-08-29 while clearing the abandoned services. Every obvious lever fails:
 
