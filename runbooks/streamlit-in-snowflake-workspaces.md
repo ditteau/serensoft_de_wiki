@@ -4,15 +4,25 @@ Operational guide for deploying the DEMEAU dashboards into `DEMEAU_DD_PROD` as
 Streamlit in Snowflake apps, backed by a Git repository and served through
 Workspaces.
 
-**Last updated:** 30 August 2026
+**Last updated:** 2 September 2026
 **Maintained by:** LVP
+
+> **State as of this revision: ten applications deployed in `DEMEAU_DD_PROD.DISTRIBUTE`,
+> all suspended, account pool spend zero.** See [A.1](#a1-deployed-apps--measured-2026-09-02).
+> Sections **B** and **A.2** describe the superseded pre-D-1 world and are retained for the
+> reasoning only — both are marked where they stop being true.
+>
+> ⚠️ **Two things a redeploy destroys, silently and without an error:** every **grant** on
+> the app ([H.5a](#h5a--a-redeploy-destroys-every-grant-on-the-app-silently)) and the
+> **idle-shutdown setting** ([H.6b](#h6b--a-redeploy-discards-the-idle-shutdown-setting-and-describe-cannot-see-it)).
+> Both are now deploy steps rather than one-time fixes.
 
 ---
 
 ## Contents
 
 - [A. What exists today](#a-what-exists-today)
-- [B. The tier problem, and why two of three apps are gated](#b-the-tier-problem-and-why-two-of-three-apps-are-gated)
+- [B. The tier problem, and why two of three apps are gated](#b-the-tier-problem-and-why-two-of-three-apps-are-gated) — ⚠️ superseded by D-1; kept for the reasoning
 - [C. Prerequisites — all applied 2026-08-29](#c-prerequisites--all-applied-2026-08-29)
 - [D. Running the identity probe](#d-running-the-identity-probe)
 - [E. Deploying an app from a Git-backed Workspace](#e-deploying-an-app-from-a-git-backed-workspace)
@@ -26,33 +36,56 @@ Workspaces.
 
 ## A. What exists today
 
-### A.1 Deployed apps, as of 2026-08-29
+### A.1 Deployed apps — measured 2026-09-02
 
-| App | Location | Owner | Note |
-|---|---|---|---|
-| Ditteau Data KPI Library | `DEMEAU_DD_DEV.DISTRIBUTE` | `SYSADMIN` | warehouse runtime |
-| Ditteau Role Based Demo Dashboard | `DEMEAU_DD_DEV.DISTRIBUTE` | `SYSADMIN` | warehouse runtime |
-| Ditteau Data Dashboard Template | `MERRIMACK_DD_DEV.DISTRIBUTE` | `SYSADMIN` | warehouse runtime |
-| DITTEAU DATA GOVERNANCE DEMEAU | `USER$LVANPELT.PUBLIC` | `LVANPELT` | Workspaces |
-| Preview of `Test_Gov` | `USER$LVANPELT.PUBLIC` | `LVANPELT` | Workspaces |
+**Ten applications, all in `DEMEAU_DD_PROD.DISTRIBUTE`**, all on
+`DEMEAU_POOL_APPS_PROD`, all `owner_role_type = ROLE`, all
+`query_warehouse = DEMEAU_ANALYTICS_PROD`. The target state in A.2 is **met and
+exceeded** — this is no longer a plan.
 
-**Nothing is deployed in any PROD database.** The two Workspaces apps sit in a
-personal database: no teammate can reach them, and their code has no lineage
-back to a commit.
+| App | Owner role | Kind |
+|---|---|---|
+| `DEMEAU_REGISTRAR` | `DEMEAU_STREAMLIT_OWNER_REGISTRAR_PROD_ROLE` | persona (D-1) |
+| `DEMEAU_FA` | `DEMEAU_STREAMLIT_OWNER_FA_PROD_ROLE` | persona (D-1) |
+| `DEMEAU_IR` | `DEMEAU_STREAMLIT_OWNER_IR_ANALYST_PROD_ROLE` | persona (D-1) |
+| `DEMEAU_FINANCE` | `DEMEAU_STREAMLIT_OWNER_FINANCE_PROD_ROLE` | persona (D-1) |
+| `DEMEAU_ADMISSIONS` | `DEMEAU_STREAMLIT_OWNER_ADMISSIONS_PROD_ROLE` | persona (D-1) |
+| `DEMEAU_ENROLLMENT` | `DEMEAU_STREAMLIT_OWNER_IR_ANALYST_PROD_ROLE` | analytics |
+| `DEMEAU_BOARD_DATA_BOOK` | `DEMEAU_STREAMLIT_OWNER_IR_ANALYST_PROD_ROLE` | analytics |
+| `DEMEAU_COURSE_DEMAND` | `DEMEAU_STREAMLIT_OWNER_IR_ANALYST_PROD_ROLE` | analytics |
+| `DEMEAU_KPI_LIBRARY` | `DEMEAU_STREAMLIT_OWNER_IR_ANALYST_PROD_ROLE` | analytics |
+| `GOVERNANCE_SIS` | `DEMEAU_STREAMLIT_OWNER_PROD` | governance viewer |
 
-⚠️ Both DEV apps are owned by `SYSADMIN`, which is on the bypass list in every
-RAP and every masking policy. They have never exercised the enforcement path, so
-their working in DEV is not evidence that anything works in PROD.
+> ⚠️ **`DEMEAU_STREAMLIT_OWNER_PROD` — the role on the last row — is the original
+> unentitled one and holds no tier.** It is not a sixth persona. `GOVERNANCE_SIS` reads
+> exactly one non-RAP table, so it works anyway; the role still reads **0 rows** from all
+> ten RAP-protected objects, which is the control working (§B). Do not entitle it.
 
-### A.2 Target state
+> ⚠️ **The four analytics dashboards are owned by the IR persona role**, which is what
+> makes them safe to share: every row, zero identity (D-4). That is a deliberate
+> assignment, not a leftover — an analytics dashboard owned by the Registrar role would
+> render unmasked names to every viewer.
 
-> ⚠️ **A.1 and A.2 describe the pre-D-1 world and are kept for the reasoning, not as
-> current state.** "Nothing is deployed in any PROD database" ceased to be true on
-> 2026-08-29 (`GOVERNANCE_SIS`), and the single-owner-role target below was superseded on
-> 2026-08-29 when WDT ratified **D-1**: the topology is now one application *per persona*,
-> each owned by its own role holding that persona's tier. Section B's "two of three apps
-> are gated" is likewise the old framing — the gate was the owner role holding no tier,
-> which is exactly what D-1 changes. **See section H.**
+**Still in DEV, unchanged:** the three `SYSADMIN`-owned warehouse-runtime apps
+(`DEMEAU_DD_DEV` ×2, `MERRIMACK_DD_DEV` ×1). ⚠️ `SYSADMIN` is on the bypass list in every
+RAP and every masking policy, so these have **never exercised the enforcement path** and
+their working in DEV is not evidence about PROD.
+
+**Personal-workspace apps: gone.** The `USER$LVANPELT.PUBLIC` apps and the nine previews
+created on 08-30 were dropped 2026-09-01/02. Account pool spend is currently **zero**.
+
+> Reconstruct this table at any time with `SHOW SERVICES IN ACCOUNT` (each service's owner
+> role) and `SHOW STREAMLITS IN DATABASE DEMEAU_DD_PROD`. Do not trust this list after a
+> deploy session — see H.5's redeploy trap.
+
+### A.2 Target state — met 2026-08-30, kept for the reasoning
+
+> ⚠️ **A.2 describes the pre-D-1 plan. It is superseded and is kept only for why the
+> shape changed.** The single-owner-role, three-app target below was replaced on
+> 2026-08-29 when WDT ratified **D-1**: one application *per persona*, each owned by its
+> own role holding that persona's tier. Section B's "two of three apps are gated" is
+> likewise the old framing — the gate was the owner role holding no tier, which is exactly
+> what D-1 changes. **Current state is A.1; the sequence that produced it is section H.**
 
 Three apps in `DEMEAU_DD_PROD.DISTRIBUTE`, owned by
 `DEMEAU_STREAMLIT_OWNER_PROD`, deployed from a Workspace backed by
@@ -60,14 +93,20 @@ Three apps in `DEMEAU_DD_PROD.DISTRIBUTE`, owned by
 
 | App | Source file | Status |
 |---|---|---|
-| Governance (recorded capture) | `streamlit/demeau_governance_sis.py` | ✅ **deployed 2026-08-29** as `DEMEAU_DD_PROD.DISTRIBUTE.GOVERNANCE_SIS` |
-| Enrollment v2 | `streamlit/demeau_enrollment_dashboard_v2.py` | gated — see B |
-| Role-based demo | `streamlit/demeau_role_dashboard.py` | gated — see B |
+| Governance (recorded capture) | `streamlit/dashboards/governance_sis/demeau_governance_sis.py` | ✅ **deployed 2026-08-29** as `DEMEAU_DD_PROD.DISTRIBUTE.GOVERNANCE_SIS` |
+| Enrollment v2 | `streamlit/dashboards/enrollment/demeau_enrollment_dashboard_v2.py` | ✅ deployed 2026-08-30 as `DEMEAU_ENROLLMENT`, owned by the **IR** role |
+| Role-based demo | ~~`streamlit/demeau_role_dashboard.py`~~ | ⚠️ **superseded** — its content was reworked into the five per-persona apps (2026-08-30). Do not deploy it; it renders `numpy`-generated values beside real query results (O-43) |
 
 `GOVERNANCE_SIS` is owned by `DEMEAU_STREAMLIT_OWNER_PROD` with
 `owner_role_type = ROLE`, runs `SpcsOnly` / `execute_as: OWNER`, and carries
-`SNOWFLAKE.SNOWPARK.PYPI_SHARED_REPOSITORY`. Its definition is committed at
-`streamlit/snowflake.yml`.
+`SNOWFLAKE.SNOWPARK.PYPI_SHARED_REPOSITORY`.
+
+> ⚠️ **Its definition is no longer at `streamlit/snowflake.yml`, and there must not be a
+> file at that path.** A single shared yml is overwritten by every *Convert to Streamlit
+> app*, silently repointing whichever app you deploy next — three deploys were lost to
+> this on 2026-08-30. Every deployable app now carries its own committed yml in its own
+> folder: `streamlit/dashboards/<app>/snowflake.yml` and
+> `streamlit/persona_apps/<persona>/snowflake.yml`. See H.1a and `streamlit/README.md`.
 
 Apps go in `DISTRIBUTE` rather than a dedicated schema because both existing DEV
 apps do, and because F.5 of the access policy governs where *models* live and is
@@ -138,12 +177,16 @@ table keys on `CURRENT_USER()`.
 Snowflake documents `CURRENT_USER()` as returning the **viewer** under the
 warehouse runtime, and the **owner's context** under the container runtime.
 **Workspaces supports container runtimes only.** So the remedy may not work at
-all on the runtime we are deploying to — and no one has measured which behaviour
-this account exhibits.
+all on the runtime we are deploying to.
 
-Until that measurement exists, any `user_domain_access` row added for a demo
-viewer is a guess that fails silently: the dashboard renders normally whichever
-tier it applied.
+> ✅ **Measured 2026-08-29, and the remedy is dead.** `CURRENT_USER()` returns
+> `STPLATSTREAMLIT<n>` — the app's own service identity, not the viewer and not an account
+> user (§J). **`user_domain_access` cannot entitle a SiS viewer at all**, so a row added
+> there for a demo viewer does nothing whatsoever. The answer is D-1: one app per persona,
+> owned by a role that holds that persona's tier. See section H.
+>
+> This paragraph is kept because the reasoning still matters — it is why the topology
+> looks the way it does.
 
 ⚠️ Do not resolve this by adding `DEMEAU_STREAMLIT_OWNER_PROD` to
 `role_domain_access`. It breaks a CODEOWNERS-protected assertion and hands every
@@ -213,22 +256,45 @@ and its 100% trigger changed from `SUSPEND_IMMEDIATELY` to `NOTIFY` on
 The probe lives in `streamlit/governance_identity_probe/` and has its own README
 covering grants and interpretation. This section is the operational sequence.
 
-### D.1 What it must answer
+> ⚠️ **The central question is already answered, and the probe is now confirmatory
+> rather than gating** (measured 2026-08-29, O-12 — see §J). `CURRENT_USER()` under the
+> container runtime returns **`STPLATSTREAMLIT<n>`**, the app's own SPCS service identity
+> — per-app, identical for every viewer, and **not an account user at all**. The
+> `user_domain_access` leg of every RAP is therefore **inert** on Workspaces, and D-1's
+> per-persona topology is the answer. Corroborated 2026-08-30 across three applications in
+> one schema returning three different identities to one viewer.
+>
+> **What the probe would still close is the per-*viewer* half**, which currently rests on
+> one viewer: nobody has watched three different people open the same app. That is a
+> formality — the identity is demonstrably not the viewer's, is bound to the service
+> object, and is not a user — but it is the only remaining way to prove invariance
+> directly. Run it if you want the record; do not block anything on it.
+
+### D.1 What it was written to answer
 
 Under the **container runtime**, does `CURRENT_USER()` return the viewer or the
 app owner? If the viewer, `user_domain_access` can carry per-viewer demo
 entitlement and ADR-003 Phase 6 holds on Workspaces. If the owner, it cannot,
 and the analytics dashboards need a different design.
 
-### D.2 Prerequisites, already in place
+✅ **Answered: neither.** It returns an application-scoped service identity, which is a
+third outcome D.4 below does not contemplate. Read D.4 with that in mind — the "identical
+across all three" branch is the one that fired, and it fired for a stronger reason than
+that branch assumed.
+
+### D.2 Prerequisites
 
 - `DEMEAU_STREAMLIT_OWNER_DEV` holds `READ SESSION`, compute pool `USAGE`,
   `CREATE STREAMLIT`/`CREATE STAGE` on `DEMEAU_DD_DEV.GOVERNANCE`, and `SELECT`
   on both tier tables.
 - The role is granted to `LVANPELT`, `WTRILLICH`, `KMARIE` — so all three see it
   in the **App executes as** picker.
-- `DEMEAU_TRANSFORM_DEV` is running again (it was quota-suspended until
-  2026-08-29, which blocked the probe entirely).
+
+> ⚠️ **`DEMEAU_TRANSFORM_DEV` is quota-suspended again and stays that way until
+> 2026-09-10.** `DEMEAU_MONITOR_TRANSFORM_DEV` is at **100.52 / 100** credits with
+> `suspend_immediately_at 100%`, and its `MONTHLY` cycle resets on the **10th** — the day
+> of its own `start_time`, not the 1st (O-45). Measured 2026-08-31. This blocked the probe
+> once before. Either wait, raise the quota, or point the probe at another warehouse.
 
 ### D.3 Sequence
 
@@ -426,10 +492,16 @@ still applies, especially E.1 (two roles) and E.7 (preview cannot run these).
 | Five owner roles | ✅ Created, each holding exactly one persona's tier |
 | Grid rows | ✅ 25 in `DEMEAU_DD_PROD.governance.role_domain_access` |
 | PII unmask | ✅ Registrar `NAME`+`DOB`, FA `FINANCIAL_AMOUNT`; others none, by design |
-| Named exception (N-13) | ✅ 28 rows in `seed_streamlit_owner_exceptions`, suite green |
-| Compute pool | ✅ `DEMEAU_POOL_APPS_PROD`, `MAX_NODES` 4 (ADR-010 CP-5) |
+| Named exception (N-13) | ✅ 28 rows in `seed_streamlit_owner_exceptions` — **25 `ROW_ACCESS` + 3 `PII_UNMASK`**; suite green |
+| Compute pool | ✅ `DEMEAU_POOL_APPS_PROD`, **`MAX_NODES` 12** (raised 4 → 10 → 12; ADR-010 CP-5) |
 | App files | ✅ Five, pushed to GitHub and fetched into the git repository |
 | Roles granted to you | ✅ All five granted to `LVANPELT` |
+| **The five apps themselves** | ✅ **Deployed 2026-08-30** — see A.1 |
+
+> ⚠️ **All five persona apps are deployed, so H.1–H.4 below is now a *redeploy* procedure,
+> not a first-run one.** That changes two things and both have bitten: a redeploy
+> **destroys every grant on the app** (H.5), and it **discards the idle-shutdown setting**
+> (H.6). Neither raises an error.
 
 **Nothing below changes entitlement.** Every step is deployment. The act that creates
 exposure is granting a *viewer* usage on an app, which is section H.5 and is deliberately
@@ -644,18 +716,74 @@ differentiation inside an application (§J), so:
 
 ```sql
 USE ROLE SECURITYADMIN;
-GRANT USAGE ON STREAMLIT DEMEAU_DD_PROD.DISTRIBUTE.DEMEAU_IR_APP TO ROLE <viewer_role>;
+GRANT USAGE ON DATABASE  DEMEAU_DD_PROD            TO ROLE <viewer_role>;
+GRANT USAGE ON SCHEMA    DEMEAU_DD_PROD.DISTRIBUTE TO ROLE <viewer_role>;
+GRANT USAGE ON WAREHOUSE DEMEAU_ANALYTICS_PROD     TO ROLE <viewer_role>;
+GRANT USAGE ON STREAMLIT DEMEAU_DD_PROD.DISTRIBUTE.DEMEAU_IR TO ROLE <viewer_role>;
 ```
 
+⚠️ **The app object names carry no `_APP` suffix** — they are `DEMEAU_IR`, `DEMEAU_FA`,
+`DEMEAU_REGISTRAR`, `DEMEAU_FINANCE`, `DEMEAU_ADMISSIONS`, `DEMEAU_ENROLLMENT`,
+`DEMEAU_BOARD_DATA_BOOK`, `DEMEAU_COURSE_DEMAND`, `DEMEAU_KPI_LIBRARY`, `GOVERNANCE_SIS`
+(A.1). An earlier version of this snippet said `DEMEAU_IR_APP`, which fails with
+`002003 does not exist or not authorized` — the account's standing failure mode, and here
+it really *is* a missing object rather than a missing privilege.
+
 ⚠️ **A viewer also needs `USAGE` on the database, the schema and the warehouse** to open
-an app at all — the grant above alone is not sufficient, and the failure looks like a
-broken app rather than a missing privilege.
+an app at all — the streamlit grant alone is not sufficient, and the failure looks like a
+broken app rather than a missing privilege. That is why all four lines are above.
 
 ⚠️ **Person users hold `DEFAULT_ROLE = PUBLIC` and no secondary roles** (2026-08-24), so
 a viewer must be granted a role that carries these usages, and must select it. `PUBLIC`
 holds no tier in either grid, which is the fail-closed default and is asserted by N-20a/b.
 
-### H.6 Cost, before you leave five apps running
+#### H.5a ⚠️ A redeploy destroys every grant on the app, silently
+
+**Measured 2026-09-02.** `DEMEAU_ENROLLMENT` was redeployed at 17:08:41 and a viewer's
+usage grant vanished with the old object. **A deploy `CREATE OR REPLACE`s the Streamlit,
+and grants do not survive the replace.** There is no error, no warning, and nothing in the
+deploy output mentions grants — the first symptom is a person opening a link that worked
+yesterday and getting *"does not exist or not authorized"*.
+
+> ⚠️ **`SHOW GRANTS TO USER <name>` cannot detect this.** It lists what exists, not what is
+> missing, so a partially-destroyed grant set looks exactly like a correct smaller one. The
+> only reliable check is to assert the expected grant **per app** and compare against the
+> list you intended.
+
+**Re-grant after every deploy.** Treat it as part of the deploy, not as remediation:
+
+```sql
+-- After ANY redeploy, re-run the grants for every principal who had access.
+SHOW GRANTS ON STREAMLIT DEMEAU_DD_PROD.DISTRIBUTE.<app>;   -- per app, not per user
+```
+
+#### H.5b Direct-to-`USER` grants sit outside every role-based control
+
+The 2026-09-01 demo access for `RTHARP` was granted **to the user**, not to a role
+(`grant_rtharp_demo_viewer_2026-09-01.sql`, all ten apps). That was the right call under
+time pressure — it applies whichever role the session lands in, including `PUBLIC`, which
+removes the "switch your role" failure mode entirely.
+
+⚠️ **But N-13, the persona grid, `seed_streamlit_owner_exceptions` and
+`assert_no_app_owner_in_role_domain_access` all reason about ROLES.** A direct-to-user
+grant is invisible to every one of them. A `DEMEAU_DEMO_VIEWER_PROD_ROLE` is the
+structural fix and is **recorded as deferred, not done**.
+
+⚠️ **A gate written as a comment is not a gate.** That migration's header read
+*"uncomment only if approved"* for the FA and Registrar apps while the `GRANT` statements
+shipped **uncommented** under a heading reading *"Included for demo exploration"*. Both
+executed. They turned out to be authorised — `RTHARP` has held `SYSADMIN` and
+`DITTEAU_ADMIN` since 2026-02-26, so nothing was disclosed beyond his existing authority —
+but the file gated them and then didn't. If a grant genuinely needs approval, **leave the
+statement commented out.**
+
+### H.6 Cost, before you leave ten apps running
+
+> **Current state, 2026-09-02: all ten apps suspended, pool `auto_suspend` back to 300s
+> after a temporary 3600s raise for a live demo, idle shutdown set to the 86,400s floor on
+> all ten, `MAX_NODES` 12, both personal-workspace strays dropped. Account pool spend is
+> zero.** Full measurement and reasoning:
+> `ditteau_data_transform/docs/governance/compute_spend_findings_2026-08-31.md`.
 
 Each running app pins a service, a pool cannot auto-suspend while any service runs, and
 **each running service takes its own node** — measured 2026-08-30: `num_services 3` /
@@ -664,10 +792,74 @@ Each running app pins a service, a pool cannot auto-suspend while any service ru
 ⚠️ **An earlier version of this section said services PACK onto a node. That was wrong**
 (ADR-010 CP-5, corrected). One node is ~0.11 credits/hour ≈ **80 credits/month**, so the
 cost is **per app left Active**: ten apps is roughly **800 credits/month** against a
-warehouse consuming ~6. `MAX_NODES` is 10 — it bounds how many apps can run at once, not
-spend. Below the app count you get *"The selected compute pool is unable to start your
-app… the pool is full"*, and the blocked app stays blocked until another idles out, which
-floors at 24 hours.
+warehouse consuming ~11. `MAX_NODES` is **12** — it bounds how many apps can run at once,
+not spend. Below the app count you get *"The selected compute pool is unable to start your
+app… the pool is full"*.
+
+⚠️ **`num_services` is NOT the number of running services, and thresholding on it is
+wrong.** Measured 2026-08-31: ten services against **two** active nodes, because eight
+were suspended. The column counts service *objects* regardless of state, so
+`num_services 10` on a pool sized 10 reads alarming and is not. **Read `ACTIVE NODES`.**
+
+#### H.6a The standing posture is "none Active at rest" — and warming is a procedure
+
+At 0.11 credits/node-hour: **all ten Active ≈ 800 credits/month** (80% of the 1,000
+account quota, for zero use) · **`GOVERNANCE_SIS` only ≈ 80** · **none at rest ≈ 7**,
+assuming ten two-hour demo sessions a month across three apps.
+
+✅ **Every service carries `auto_resume = true`, so a suspended app is slow, not broken.**
+Observed: `DEMEAU_ENROLLMENT` suspended 16:33:47, resumed **18:00:04** on someone simply
+opening it, with no intervention. ⚠️ **ADR-010's alternatives table understates this
+option** because it was written before suspension was known to work — that entry describes
+suspending the *pool*, which does break an unannounced open. Suspending a *service* costs
+latency, not availability.
+
+✅ **Cold start measured 2026-09-02: ~70 seconds, and variable.** ⚠️ **The variance matters
+more than the average**, which is why the mitigation is a procedure rather than a number:
+**warm the apps you intend to show before the audience is in the room, and never open a
+cold app live.** That holds whether a given start takes 40 seconds or three minutes; a
+single average invites someone to budget 70 seconds of stage time and be wrong.
+
+#### H.6b ⚠️ A redeploy discards the idle-shutdown setting, and `DESCRIBE` cannot see it
+
+All ten services read `auto_suspend_secs = 259,200` (**72 hours**) when measured
+2026-08-31, despite 86,400 having been applied to `GOVERNANCE_SIS` on 08-29.
+
+**Resolved 2026-09-02:** `SHOW STREAMLITS` exposes `idle_auto_shutdown_time_seconds` —
+**which `DESCRIBE STREAMLIT` does not** — and it read **unset on all ten**, including the
+one set on 08-29. So a redeploy **replaces the Streamlit object and discards the
+setting**, and 259,200 is the fallback default.
+
+> ⚠️ **This recurs on every deploy. Re-applying it is a runbook step, not a one-time fix**
+> — the same shape as the grant destruction in H.5a, from the same cause. Verify with
+> `SHOW STREAMLITS`, never `DESCRIBE STREAMLIT`.
+
+The cost of missing it: an abandoned app bills **72h × 0.11 = 7.92 credits** before
+shutting itself down, against **2.64** at the floor. Across ten apps, ~79 credits of pure
+idle tail versus ~26.
+
+#### H.6c ⚠️ "Last query" is a trap; filter to `SELECT`
+
+If you build any idle sweep, do not threshold on the newest query per service. Measured
+over six hours on `DEMEAU_ENROLLMENT`: **3,085 `DESCRIBE` + 3,085 `LIST_FILES` against 25
+`SELECT`s** — a metronomic **1,440 queries/hour**, one pair every 2.5 seconds, identical
+across both running services to the second. That is the container runtime watching its own
+stage, not a person.
+
+**`MAX(start_time)` therefore reads "seconds ago" for anything running, forever, and a
+sweep built on it would never fire once** — while looking like a working control. Filter
+to `query_type = 'SELECT'`; the discrimination is roughly 200:1.
+
+⚠️ **Even filtered, `idle_minutes` is a lower bound on inattention, never proof of
+absence.** Streamlit queries on interaction and cache miss, not on reading — a viewer
+studying a rendered page for an hour issues zero SELECTs. Any sweep needs a threshold
+longer than a plausible reading session, which is why the CP-1 monitor **reports and does
+not act**.
+
+⚠️ **Per-application cost attribution is impossible, permanently.**
+`SNOWPARK_CONTAINER_SERVICES_HISTORY` carries no service name, so pool credits can never be
+split across the apps sharing a pool (O-47). Per-app cost is an inference from node-hours ×
+running time, not a measurement.
 
 ⚠️ **Corrected 2026-08-30: there IS a scriptable way.** `ALTER SERVICE … SUSPEND`
 works once `OPERATE` is granted — it failed as `ACCOUNTADMIN` only because nobody held
@@ -675,6 +867,13 @@ that privilege, not because the services are unstoppable. `ALTER STREAMLIT … S
 still does not exist and `IDLE_AUTO_SHUTDOWN_TIME_SECONDS` still floors at 24 hours, so
 the *idle timer* remains useless as a between-sessions control — but a scheduled sweep is
 now buildable. See H.1b and ADR-010.
+
+> The 24-hour floor is why H.6a's answer is "suspend deliberately" and H.6b's is "set the
+> floor anyway." They are not in tension: the timer is a **backstop against total
+> abandonment** (72h → 24h of idle tail), never a between-sessions control. ⚠️ **A
+> scheduled sweep is buildable but is not built** — the CP-1 monitor is written,
+> validated read-only, and **unexecuted**, awaiting the CP-4 decision. Report-only by
+> design: suspending an app a client is mid-demo on is worse than the spend it saves.
 
 ⚠️ **Suspend as `DITTEAU_ADMIN` or `ACCOUNTADMIN`. As `SYSADMIN` it fails, and the
 message names the wrong problem.** `OPERATE` was granted to `DITTEAU_ADMIN` only
