@@ -1054,6 +1054,38 @@ Also settled: `CURRENT_DATABASE()` returns the deployment database, so
 
 ## G. Traps
 
+**⚠️ `snow streamlit deploy` CANNOT deploy these apps, and forcing it would be a
+governance failure.** Measured 2026-09-06 against Snowflake CLI 3.14.0. The committed
+`snowflake.yml` files are in **Workspaces** format; they share `definition_version: 2`
+with the Snowflake CLI but are not the same schema. `StreamlitEntityModel` sets
+`extra="forbid"` and rejects three fields outright:
+
+```
+run_mode                'SpcsOnly'                              Extra inputs are not permitted
+execute_as              'OWNER'                                 Extra inputs are not permitted
+artifact_repositories   ['SNOWFLAKE.SNOWPARK.PYPI_SHARED...']   Extra inputs are not permitted
+```
+
+It also validates `compute_pool` as requiring `runtime_name`, which these files do not
+carry.
+
+⚠️ **Do NOT strip those three fields to make the CLI accept the file.** They are precisely
+the three that make the deployment correct:
+
+| Field | Stripping it gives you |
+|---|---|
+| `execute_as: OWNER` | **caller's rights.** Under D-1 the owner role IS the entitlement; with caller's rights every query runs as the viewer's role, and person users default to `PUBLIC`, which holds no tier — so the app reads 0 rows for ordinary viewers and *bypasses the intended model entirely* for an admin one |
+| `run_mode: SpcsOnly` | a warehouse-runtime app, a different runtime from the other ten |
+| `artifact_repositories` | dependency resolution fails; the app never starts, and the error names a package rather than the missing repository (§I) |
+
+The failure is loud (a pydantic validation error before anything connects), so the CLI is
+safe to *try*. It is the "fix" that is dangerous. **Deploy through Workspaces.**
+
+The CLI is still useful either side of a deploy — `snow streamlit get-url`, and any
+`SHOW`/`GRANT`/`ALTER STREAMLIT` needed for the H.5a and H.6b restores — just not for the
+deploy itself.
+
+
 **`_resolve_database()` follows the deployment, not the code.** Every DEMEAU
 dashboard resolves its database from `session.get_current_database()`, falling
 back to `DEMEAU_DD_PROD`. Deployed into `USER$LVANPELT.PUBLIC` — where both
