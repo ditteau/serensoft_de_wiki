@@ -16,6 +16,7 @@ Snowflake architecture, ETL runbooks, and engineering decisions for the Ditteau 
 | Log an architectural decision | [ADR Template](decisions/adr-template.md) |
 | Review data quality standards | [DQ Framework](governance/dq-framework.md) |
 | Read the governance retrospective and lessons | [Governance & Production Readiness Review](governance/governance-and-production-readiness-review.md) |
+| Understand where a data correction belongs | [Case Studies](case-studies/README.md) |
 | Know the rules for running in production | [Production Operating Rules](governance/production-operating-rules.md) |
 | Manage row-level access or advisor rosters | [Row Access Policies](runbooks/row-access-policies.md) |
 | Deploy a Streamlit dashboard to PROD | [Streamlit in Snowflake (Workspaces)](runbooks/streamlit-in-snowflake-workspaces.md) |

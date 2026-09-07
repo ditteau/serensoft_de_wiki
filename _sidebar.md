@@ -53,6 +53,12 @@
 
 ---
 
+- **Case Studies**
+- [Overview](case-studies/README.md)
+- [The Year 8015](case-studies/year-8015-medallion-layers.md)
+
+---
+
 - **Decisions (ADRs)**
 - [ADR Template](decisions/adr-template.md)
 - [ADR-001: External Sources Shared Database](decisions/adr-001-external-sources-shared-database.md)
