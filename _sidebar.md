@@ -71,4 +71,3 @@
 - [ADR-008: PII Access Logging on Built-In ACCESS_HISTORY](decisions/adr-008-pii-access-logging-access-history.md)
 - [ADR-009: dbt Build Provenance via on-run-end Hook](decisions/adr-009-dbt-build-provenance.md)
 - [ADR-010: Compute Pool Economics for Streamlit in Snowflake](decisions/adr-010-compute-pool-economics.md)
-- [ADR-011: Time-Series Forecast Schema Design (Proposed)](decisions/adr-011-time-series-forecast-schema.md)
