@@ -4,7 +4,7 @@
 
 **Date:** 2026-08-13
 **Author:** LVP
-**Status:** Active — provenance section pending KKM-approved language
+**Status:** Active
 
 ---
 
@@ -14,9 +14,9 @@ DEMEAU is a demonstration school tenant in the Ditteau Data platform. It is:
 - A **full three-environment tenant** (DEV, TEST, PROD databases)
 - The **governance validation environment** for all ADR-003 work
 - The **demo tenant** for client presentations and dashboard prototyping
-- The only tenant with **masking policies deployed** (DEV only)
+- The only tenant with **RAPs and masking policies deployed and active** (PROD)
 
-DEMEAU is not a production school. It does not represent a real institution's data.
+DEMEAU is **pseudonymized Saint Anselm data**, not synthetic data. Treat DEMEAU as real institutional data for access purposes. See Section 5 for provenance details.
 
 ---
 
@@ -50,16 +50,18 @@ DEMEAU is not a production school. It does not represent a real institution's da
 
 **DEMEAU_DD_TEST:** Similar structure (not queried).
 
-**DEMEAU_DD_PROD (unbuilt):**
+**DEMEAU_DD_PROD (fully built, verified 2026-09-26):**
 
 | Schema | Table Count | Notes |
 |--------|-------------|-------|
-| DEPOSIT | 1 | Placeholder only |
-| GOVERNANCE | 7 | Tier tables (populated), PII unmask tables |
-| DETERGE | 0 | **Not built** |
-| DISTRIBUTE | 0 | **Not built** |
+| DEPOSIT | 3,538 | Raw data landing zone |
+| DETERGE | 22 | Staging views + intermediate tables |
+| DISTRIBUTE | 64 | Dimensions, facts, marts, seeds |
+| GOVERNANCE | 8 | Tier tables, PII unmask tables |
+| DBT_AUDIT | 1 | Build provenance |
+| DBT_TEST_RESULTS | 1,012 | Test failure storage |
 
-⚠️ DEMEAU PROD has no transformed data. The deterge and distribute layers have never been built in PROD.
+✅ DEMEAU PROD is fully built with RAPs and masking policies **attached and active**.
 
 ---
 
@@ -140,71 +142,54 @@ DEMEAU is used for:
 
 | Feature | DEMEAU | Other Schools |
 |---------|--------|---------------|
-| Masking policies | 7 deployed | 0 |
+| RAPs and masking | **Active in PROD** | Not deployed |
 | `has_jcx_deposit` | true | false |
 | Network policy | Yes (06_network_policy.sql) | No |
 | Data span | 18 years (2006-2024) | Varies |
 | Students per term | ~2,200 | Varies |
+| Data provenance | Pseudonymized Anselm | Real institutional |
 
 ---
 
 ## 5. Data Provenance
 
-⚠️ **PENDING KKM-APPROVED LANGUAGE**
+*Measured 2026-09-26 against DEMEAU_DD_DEV and ANSELM_DD_DEV.*
 
-This section must be written in language KKM has reviewed and approved. The placeholder below indicates what must be documented; the actual content requires KKM sign-off.
+### 5.1 Summary
 
-### 5.1 Stub — Awaiting KKM Language
+DEMEAU is **pseudonymized Saint Anselm data**, not synthetic data:
 
-```
-[PENDING KKM LANGUAGE]
+| Metric | Value |
+|--------|-------|
+| Shared `student_id` values with ANSELM | **14,151** (100% overlap in both directions) |
+| First name match rate | 0% |
+| Last name match rate | 0% |
+| DOB match rate | 0% |
+| Average DOB shift | **55.4 days** (D-32 jitter, ±10–100 days) |
 
-This section must document:
-- The origin of data in DEMEAU_CX_ARCHIVE
-- The origin of data in DEMEAU_DD_DEV.DEPOSIT
-- Whether any data is derived from real institutional records
-- What transformations or synthesis were applied
-- The safety premises that depend on this provenance
+### 5.2 Authorization
 
-Do not draft this section from any prior description. See Section 6 for why.
-```
+Anselm authorized use of this pseudonymized data including third-party demos (D-21, ratified KKM 2026-08-26).
 
-### 5.2 What Is Known from Deployed State
+### 5.3 Access Implications
 
-The following is observable from configuration, not from prior documentation:
+**Treat DEMEAU as real institutional data for access purposes.** The `student_id` values are identical to Anselm's, and a ±3-month DOB shift crosses a year boundary only near one — 85.8% of students keep their real birth year. Real `student_id` plus a mostly-real birth year is still a quasi-identifier. DOB masking remains active, and the `student_id` half of the O-29 gap remains open.
 
-1. `run_demeau_dev.sh` sets `jcx_share_database: DEMEAU_CX_ARCHIVE`
-2. `stg_jcx__students` reads from that archive via `jcx_base()`
-3. Therefore, `DEMEAU_DD_DEV.distribute` is derived from `DEMEAU_CX_ARCHIVE`
-4. The data share origin is `SYAXLGH.DITTEAUEAST.DEMEAU_DB_SNOWFLAKE_SHARE_070725`
+### 5.4 Anonymization Details
 
-The provenance of the data in that share — whether synthetic, anonymized, or derived from real records — is not documented in any repository and must come from KKM.
+- **Names:** Replaced with Faker-generated values (0% match)
+- **DOB:** Jittered ±10–100 days per D-32, verified by N-21 assertion (`ditteau_data_infra/school_setup/platform/verify_demeau_dob_anonymisation.sql`)
+- **student_id:** Preserved (required for referential integrity across dimension/fact joins)
 
 ---
 
 ## 6. Documentation Defect Record
 
-### 6.1 The Prior Description
+### 6.1 Summary
 
-A two-lane account of DEMEAU data was previously in circulation:
+An earlier two-lane description of DEMEAU data (real CX plus fully synthetic) did not match deployed reality. The verification in Section 5 confirmed DEMEAU is pseudonymized Anselm data, not synthetic.
 
-> **Lane 1:** Terminal and CX-only — [description of first lane]
-> **Lane 2:** Fully synthetic — [description of second lane]
-
-This description implied that certain DEMEAU data paths were isolated from real institutional records.
-
-### 6.2 Why It Was Wrong
-
-The prior description does not match deployed reality:
-
-1. `run_demeau_dev.sh` explicitly sets `jcx_share_database: DEMEAU_CX_ARCHIVE`
-2. The `stg_jcx__*` staging models read from this archive
-3. `DEMEAU_DD_DEV.distribute` tables are therefore derived from `DEMEAU_CX_ARCHIVE`
-4. The share's origin (`SYAXLGH.DITTEAUEAST.DEMEAU_DB_SNOWFLAKE_SHARE_070725`) indicates it came from the DITTEAUEAST account
-
-**The "Lane 2 fully synthetic" premise did not hold.** Data in `DEMEAU_DD_DEV.distribute` flows through the CX archive, not through a synthetic generation path.
-
-### 6.3 Impact
+### 6.2 Impact
 
 Reasoning from the prior description produced a **false safety premise** in Phase 6 planning:
 
@@ -212,15 +197,15 @@ Reasoning from the prior description produced a **false safety premise** in Phas
 - This assumption informed decisions about what validation could be performed on DEMEAU vs. other schools
 - The assumption was not verified against deployed configuration
 
-### 6.4 Lesson
+### 6.3 Lesson
 
-**Prior documentation is not evidence of deployed state.** The two-lane description may have been accurate at some point, or may have been aspirational, or may have described a different DEMEAU configuration. What matters is what is currently deployed:
+**Prior documentation is not evidence of deployed state.** What matters is what is currently deployed:
 
 - `run_demeau_dev.sh` is the source of truth for DEMEAU configuration
 - `SHOW DATABASES` and schema queries are the source of truth for what exists
-- The data share origin is observable; the data's ultimate provenance requires KKM confirmation
+- The 2026-09-26 verification (Section 5) established the actual provenance
 
-This document now serves as the authoritative DEMEAU reference. The prior description should not be cited.
+This document now serves as the authoritative DEMEAU reference. The prior two-lane description should not be cited or restated.
 
 ---
 
@@ -265,26 +250,30 @@ DEMEAU has the standard 21-role structure:
 
 ### 8.1 Row Access Policies
 
+*Verified 2026-09-26 in DEMEAU_DD_PROD.*
+
 | Policy | Signature | Status |
 |--------|-----------|--------|
-| RAP_STUDENT_ACADEMIC | NUMBER(38,0) | Built, not attached |
-| RAP_FINANCIAL_AID | VARCHAR | Built, not attached |
-| RAP_ADMISSIONS | VARCHAR | Built, not attached |
+| RAP_STUDENT_ACADEMIC | NUMBER(38,0) | **Attached and active** (dim_student, fact_student_term, fact_enrollment) |
+| RAP_FINANCIAL_AID | VARCHAR | **Attached and active** (fact_aid_award) |
+| RAP_ADMISSIONS | VARCHAR | **Attached and active** (dim_applicant, fact_application) |
 | DISTRIBUTE_ACCESS_POLICY | — | Legacy, PROD only |
 
 ### 8.2 Masking Policies (DEMEAU Only)
 
+*Verified 2026-09-26 in DEMEAU_DD_PROD.*
+
 | Policy | PII Field | Status |
 |--------|-----------|--------|
-| MASK_NAME | NAME | Built, not attached |
-| MASK_DOB | DOB | Built, not attached |
-| MASK_EMAIL | EMAIL | Built, not attached |
-| MASK_SSN | SSN | Built, not attached |
-| MASK_PHONE | PHONE | Built, not attached |
-| MASK_ADDRESS | ADDRESS | Built, not attached |
-| MASK_FINANCIAL_AMOUNT | FINANCIAL_AMOUNT | Built, not attached |
+| MASK_NAME | NAME | **Attached and active** |
+| MASK_DOB | DOB | **Attached and active** |
+| MASK_EMAIL | EMAIL | Built |
+| MASK_SSN | SSN | Built |
+| MASK_PHONE | PHONE | Built |
+| MASK_ADDRESS | ADDRESS | Built |
+| MASK_FINANCIAL_AMOUNT | FINANCIAL_AMOUNT | **Attached and active** |
 
-These masking policies exist **only** in DEMEAU_DD_DEV. No other school has masking policies deployed.
+RAPs and masking policies are **attached and active in DEMEAU_DD_PROD**. No other school has masking policies deployed.
 
 ---
 
