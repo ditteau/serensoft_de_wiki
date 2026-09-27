@@ -60,6 +60,8 @@ Roles absent from `role_domain_access` fall through the policy's `ELSE` to `FALS
 
 ### A.4 How the policy evaluates
 
+> **[SUPERSEDED by D-1]** The user-first COALESCE resolution described below was the August 2026 design. D-1 (WDT ratified 2026-08-29) replaced it with per-persona app owner roles. Current state: each persona's `{CODE}_STREAMLIT_OWNER_{PERSONA}_{ENV}_ROLE` carries that persona's tier in `role_domain_access`; `user_domain_access` has zero rows; under the Workspaces container runtime `CURRENT_USER()` returns the SPCS service identity, so the user leg is inert. The policy signature and SCOPED predicate remain valid; only the user-first resolution is superseded. Migration: `ditteau_data_infra/school_setup/migrations/add_d1_persona_owner_roles_2026-08-30.sql`.
+
 ```sql
 CURRENT_ROLE() IN ('ACCOUNTADMIN', 'SYSADMIN')     -- bypass
 OR CASE COALESCE(

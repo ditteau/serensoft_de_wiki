@@ -10,6 +10,8 @@
 
 ## 1. CURRENT_ROLE() Cannot Select Tiers in Streamlit in Snowflake
 
+> **[SUPERSEDED by D-1]** The user-first COALESCE resolution described here was replaced by per-persona app owner roles. Under D-1 (WDT ratified 2026-08-29), each persona's `{CODE}_STREAMLIT_OWNER_{PERSONA}_{ENV}_ROLE` carries that persona's tier in `role_domain_access`. `user_domain_access` has zero rows. Under the Workspaces container runtime, `CURRENT_USER()` returns the SPCS service identity, so the user leg of the RAPs is inert. Migration: `ditteau_data_infra/school_setup/migrations/add_d1_persona_owner_roles_2026-08-30.sql`.
+
 ### The Problem
 
 Inside a Streamlit in Snowflake (SiS) application, `CURRENT_ROLE()` returns the **app owner role**, not the viewer's role. This is documented Snowflake behavior for owner's-rights execution:
@@ -42,6 +44,8 @@ This is why `user_domain_access` exists. It was not added for administrative con
 ---
 
 ## 2. Streamlit Owner Roles Are Deliberately Absent from role_domain_access
+
+> **[SUPERSEDED by D-1]** The generic `{CODE}_STREAMLIT_OWNER_{ENV}` roles are still absent from `role_domain_access`, but they are no longer the app owner roles. D-1 introduced per-persona app owner roles (`{CODE}_STREAMLIT_OWNER_{PERSONA}_{ENV}_ROLE`) that **do** carry tiers. The invariant test `assert_no_app_owner_in_role_domain_access.sql` now excludes the per-persona owner roles. Migration: `ditteau_data_infra/school_setup/migrations/add_d1_persona_owner_roles_2026-08-30.sql`.
 
 ### The Observed State
 

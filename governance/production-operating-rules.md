@@ -125,16 +125,15 @@ all environments** until the preconditions in §5.3 are met for that environment
 Flipping either is a governance decision requiring KKM sign-off, not a deployment step.
 
 **Rule 5.2** — Access tiers resolve `COALESCE(user_domain_access, role_domain_access)`.
-The user-keyed path exists because Streamlit in Snowflake runs owner's-rights, so
-`CURRENT_ROLE()` returns the app owner for every viewer.
+
+> **[SUPERSEDED by D-1]** The user-first resolution described here was the August 2026 design. D-1 (WDT ratified 2026-08-29) replaced it with per-persona app owner roles. Current state: `user_domain_access` has zero rows; `CURRENT_USER()` under Workspaces returns the SPCS service identity, making the user leg inert. Tiers now resolve from the per-persona `{CODE}_STREAMLIT_OWNER_{PERSONA}_{ENV}_ROLE` in `role_domain_access`.
 
 **Rule 5.3 — Preconditions before enabling row-level security in an environment:**
 
 1. The three domain policies exist in that database
 2. `{CODE}_DBT_{ENV}` holds `APPLY` on each of them
 3. `role_domain_access` is populated
-4. `user_domain_access` is populated for every user who will access through a
-   Streamlit app — **an empty grid denies everything under owner's-rights**
+4. ~~`user_domain_access` is populated for every user who will access through a Streamlit app~~ **[SUPERSEDED]** Under D-1, `user_domain_access` is empty. Entitlement flows through per-persona app owner roles.
 5. `advisor_student_map` is populated, or no role holds `SCOPED` in that environment
 6. Attachment is confirmed by querying `information_schema.policy_references`
 
