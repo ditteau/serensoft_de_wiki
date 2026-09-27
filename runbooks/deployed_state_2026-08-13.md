@@ -1,5 +1,14 @@
 # Deployed State of Record — 2026-08-13
 
+> **[HISTORICAL SNAPSHOT]** This document is a point-in-time snapshot from August 2026 and is superseded by the 2026-09-26 verification. Major changes since this snapshot:
+>
+> - **DEMEAU_DD_PROD is now fully built** (DETERGE 22, DISTRIBUTE 64, GOVERNANCE 8)
+> - **RAPs and masking policies are active in DEMEAU_DD_PROD**
+> - **D-1 entitlement design** replaced the user-first COALESCE resolution with per-persona app owner roles
+> - **snap_cohort_milestone** is built and deployed (1,138 rows in DEMEAU PROD)
+>
+> For current state, see `~/ditteau_context_regen/09_snowflake_verification.md` Section K.
+
 **Prepared by:** Claude Code (automated extraction)
 **Source:** Snowflake account `syaxlgh-ditteau_data` + repository scans
 **Purpose:** Baseline for documentation regeneration per instruction document
