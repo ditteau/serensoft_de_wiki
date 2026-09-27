@@ -106,6 +106,8 @@ vars:
   has_banner: false
 ```
 
+> **Router Stub Exception:** Never use `enabled=var(...)` or `enabled=false` on a model that is an arm of a UNION ALL router. A disabled model is removed from the dbt graph entirely — any `ref()` to it fails at runtime, even inside a Jinja `{% if %}` block that never executes. Router stubs use `enabled=true` (or omit the key) with a `WHERE 1=0` body instead. Place `has_*` guards in the router's Jinja conditionals, not in stub configs. See [Silent Failure Modes](silent-failure-modes.md) for details.
+
 **Critical:** A `has_<source>` flag is a claim, not a measurement. Always verify the deposit tables actually exist:
 
 ```sql
