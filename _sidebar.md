@@ -12,6 +12,7 @@
 
 - **dbt**
 - [Conventions](dbt/conventions.md)
+- [Silent Failure Modes](dbt/silent-failure-modes.md)
 - [Project Structure](dbt/project-structure.md)
 - [Testing Strategy](dbt/testing.md)
 - [Macros Reference](dbt/macros.md)
