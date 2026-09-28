@@ -124,6 +124,63 @@ For identifier counts, always use `COUNT(DISTINCT ...)` with an `is_current` pre
 
 ---
 
+### A.8 `snap_*` is not a reliable class — three of five carry no history
+
+The `snap_` prefix reads as "snapshot", and platform notes have described the
+family as "SCD Type 2 with `dbt_valid_from` timestamps". **Neither is reliably
+true.**
+
+None of the five `snap_*` models carries `dbt_valid_from` or `dbt_valid_to`.
+They are not dbt snapshots. They are incremental merge models with a
+`snapshot_date` column, and whether that column holds history depends entirely
+on where its value comes from.
+
+Measured 2026-09-28, both tenants:
+
+| Model | `snapshot_date` source | Merrimack | DEMEAU | Historical? |
+|---|---|---|---|---|
+| `snap_enrollment_term` | `dim_term.term_beg_date` | 205 dates from 2002-05-28 | 164 from 2007-01-15 | **Yes** |
+| `snap_cohort_milestone` | academic calendar | 23 dates from 2002-09-04 | 28 from 1997-09-01 | **Yes** |
+| `snap_retention_term` | `current_date` | **1 date** | 2 dates, same month | **No** |
+| `snap_admissions_weekly` | `current_date` | **1 date** | 2 dates, same month | **No** |
+| `snap_aid_term` | `current_date` | **1 date** | **1 date** | **No** |
+
+The bottom three stamp `snapshot_date` with **the day dbt ran**. They accumulate
+history forward from first run and carry nothing before it. The DEMEAU pairs have
+two dates only because dbt happened to run twice that month — that is the
+mechanism visible, not a counterexample.
+
+**Two consequences:**
+
+1. **A `--full-refresh` on one of the bottom three destroys its accumulated
+   history**, because there is no source to reproduce it from. On the top two a
+   full refresh is safe: the dates come from the academic calendar, so a rebuild
+   reproduces every one.
+2. **Querying one of the bottom three "as of" a past date silently returns the
+   current state**, because only one snapshot date exists to match.
+
+**How to tell, for any `snap_*` model:**
+
+```sql
+-- If this returns 1, or returns only dates in the recent past,
+-- the model carries no history.
+SELECT COUNT(DISTINCT snapshot_date), MIN(snapshot_date), MAX(snapshot_date)
+FROM <db>.DISTRIBUTE.<snap_model>;
+```
+
+Then check the model source — a `snapshot_date` derived from `dim_term` or the
+academic calendar is real history; `current_date AS snapshot_date` is not.
+
+**When adding a new `snap_*` model:** derive `snapshot_date` from the data's own
+calendar wherever the grain allows it. Reach for `current_date` only when the
+measurement genuinely has no date but today, and say so in the model header —
+otherwise the prefix promises something the model does not deliver.
+
+**Source:** measured against both tenant warehouses 2026-09-28; recorded in
+`ditteau_data_transform/docs/forecasting/point_in_time_findings.md` §E
+
+---
+
 ## B. Snowflake Patterns
 
 *Verified 2026-09-26 against DEMEAU_DD_PROD.*
