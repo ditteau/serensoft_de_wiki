@@ -205,6 +205,54 @@ All measured at Merrimack 2026-10-29 and all silent when wrong.
 
 ---
 
+## ⚠️ Step 6b — A one-hop FK closure lands the header and misses the fact
+
+`generate_extract_sql.py --owner <OWNER> --fk-closure` follows foreign keys
+**one hop** from the owner-tagged seed set. That is one hop short of a
+`header → detail → amount` chain, which is the normal shape of a budgeting or
+document module.
+
+**Measured at Merrimack 2026-10-30**, after a 223-table pull had already been
+loaded, staged and reviewed:
+
+| Table | `data_owner` | Distance | Pulled? |
+|---|---|---|---|
+| `masterbudget` | `FINANCE` | seed | ✅ |
+| `lineitem` | `UNKNOWN` | 1 hop | ✅ |
+| `lineitemamount` | `UNKNOWN` | **2 hops** | ❌ |
+
+`lineitem` arrived with **76,760 rows and no amount column.** The amounts, the
+periodised amounts, the line-item code decode and the GL-account crosswalk were
+all two hops out and silently absent.
+
+⚠️ **The pull looked complete: 223 tables, 90 non-empty, zero failures.** The
+single most-requested report could not be built from any of it, and nothing in
+the extract, the load or the staging build said so. It was found by reading a
+column list.
+
+**Why it is structural rather than a site quirk:** only the header carries the
+owner tag. The detail and amount tables read `data_owner: UNKNOWN` in every
+tenant, because the registry's owner field is pattern-derived (see *Registry
+staleness* below). One hop reaches the detail and stops.
+
+**Two ways to catch it:**
+
+○ **Run the closure twice** — feed pass one's table list back as the seed:
+  `--tables-from pass1_tables.txt --fk-closure --list-only`.
+○ **Test for orphaned headers before loading.** A table that arrives with rows,
+  carries `*id` columns pointing at type or code tables, and has **no numeric
+  column** is a header whose detail is missing. That test catches it on sight.
+
+⚠️ **Do not respond by pulling everything.** At Merrimack the one-hop frontier
+beyond pass one was **497 registry tables**. Widening without a reason trades a
+known gap for an unreviewed 2,591-table pull.
+
+⚠️ Separately: a table that *was* requested and did not arrive was **empty**,
+not missed — the extractor skips empty tables. Three Merrimack budget tables
+fell in that category, which is itself a finding about what the site uses.
+
+---
+
 ## Step 7 — Registry staleness
 
 The registry is generated from a catalog export, which is a point-in-time snapshot of a
