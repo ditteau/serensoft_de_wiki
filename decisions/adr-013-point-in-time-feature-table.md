@@ -190,6 +190,29 @@ now uses `main_term_spine()` (`models/distribute/marts/snapshots/snap_retention_
 dates (2026-09-27 to 2026-10-31) [WAREHOUSE-VERIFIED 2026-11-03]. See Round 3
 responses, C.2.
 
+**Update 2026-11-04: DEMEAU is not loss-free.** Decision 2 states "DEMEAU cannot
+catch this, because both facts use `'--'` there". That statement holds for
+undergraduate terms only. In the same direction as this ADR's measurement,
+392 of 67,397 `mart_student_term_features` rows at DEMEAU (0.58%) find no
+`fact_student_term` row on `term_key` [WAREHOUSE-VERIFIED 2026-11-04]. Every one
+falls in 18 doctoral terms, where registrations sit on a subsession code and
+the academic record sits on `'--'`, and no other term has an unmatched row:
+`FAN12011DOC`, `FAN22012DOC`, `FAN22013DOC`, `FAN12014DOC`, `FAN22015DOC`,
+`FAN22016DOC`, `FAN22017DOC`, `FAN22018DOC`, `FAN22019DOC`, `SPN32012DOC`,
+`SPN42013DOC`, `SPN42014DOC`, `SPN42015DOC`, `SPN42016DOC`, `SPN42017DOC`,
+`SPN42018DOC`, `SPN42019DOC`, `SPN42020DOC`. No current model joins the two
+facts on `term_key`, so nothing published is affected.
+
+**Update 2026-11-04: two directions, two denominators.** This ADR's 50.85% counts
+feature-table rows looking up `fact_student_term` on `term_key`, across all
+149,553 rows. Re-measured in that direction it reproduces exactly: 76,048 of
+149,553 (50.85%), made up of 1,571 of 71,780 before 2017 (2.19%) and 74,477 of
+77,773 from 2017 on (95.76%) [WAREHOUSE-VERIFIED 2026-11-04]. The separate figure
+of 89,263 of 92,769 counts `fact_student_term` FA/SP rows from 2017 on that find
+no registration on `term_key` [WAREHOUSE-VERIFIED 2026-11-03]. It runs in the
+opposite direction over a different table, so it is a different quantity, not a
+correction to 50.85%.
+
 ---
 
 ### Alternatives considered
