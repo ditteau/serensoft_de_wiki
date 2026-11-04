@@ -184,6 +184,12 @@ coalescing it to false in a feature matrix reintroduces the defect.
    semester is a platform-level trap, not a quirk of this model. Any other model
    joining those two facts on `term_key` has the same silent 50% loss.
 
+**Update 2026-11-03:** Follow-up 1 resolved 2026-09-28. `snap_retention_term`
+now uses `main_term_spine()` (`models/distribute/marts/snapshots/snap_retention_term.sql:128`)
+[REPO-VERIFIED]; 92 rows per snapshot date at Merrimack dev, across 4 snapshot
+dates (2026-09-27 to 2026-10-31) [WAREHOUSE-VERIFIED 2026-11-03]. See Round 3
+responses, C.2.
+
 ---
 
 ### Alternatives considered
