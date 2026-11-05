@@ -44,6 +44,7 @@
 - [Row Access Policies](runbooks/row-access-policies.md)
 - [Streamlit in Snowflake (Workspaces)](runbooks/streamlit-in-snowflake-workspaces.md)
 - [Jenzabar One Extraction](runbooks/jenzabar-one-extraction.md)
+- [Monthly Organize Sweep](runbooks/monthly-organize-sweep.md)
 
 ---
 

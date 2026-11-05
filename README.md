@@ -21,6 +21,7 @@ Snowflake architecture, ETL runbooks, and engineering decisions for the Ditteau 
 | Manage row-level access or advisor rosters | [Row Access Policies](runbooks/row-access-policies.md) |
 | Deploy a Streamlit dashboard to PROD | [Streamlit in Snowflake (Workspaces)](runbooks/streamlit-in-snowflake-workspaces.md) |
 | Extract data from a Jenzabar One (MSSQL) tenant | [Jenzabar One Extraction](runbooks/jenzabar-one-extraction.md) |
+| Run the monthly cleanup across the ditteau repos | [Monthly Organize Sweep](runbooks/monthly-organize-sweep.md) |
 
 ---
 
