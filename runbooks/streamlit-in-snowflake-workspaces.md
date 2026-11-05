@@ -783,7 +783,7 @@ statement commented out.**
 > after a temporary 3600s raise for a live demo, idle shutdown set to the 86,400s floor on
 > all ten, `MAX_NODES` 12, both personal-workspace strays dropped. Account pool spend is
 > zero.** Full measurement and reasoning:
-> `ditteau_data_transform/docs/governance/compute_spend_findings_2026-08-31.md`.
+> `ditteau_data_transform/docs/_dated/governance/compute_spend_findings_2026-08-31.md`.
 
 Each running app pins a service, a pool cannot auto-suspend while any service runs, and
 **each running service takes its own node** — measured 2026-08-30: `num_services 3` /

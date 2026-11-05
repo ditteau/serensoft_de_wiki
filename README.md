@@ -20,6 +20,7 @@ Snowflake architecture, ETL runbooks, and engineering decisions for the Ditteau 
 | Know the rules for running in production | [Production Operating Rules](governance/production-operating-rules.md) |
 | Manage row-level access or advisor rosters | [Row Access Policies](runbooks/row-access-policies.md) |
 | Deploy a Streamlit dashboard to PROD | [Streamlit in Snowflake (Workspaces)](runbooks/streamlit-in-snowflake-workspaces.md) |
+| Extract data from a Jenzabar One (MSSQL) tenant | [Jenzabar One Extraction](runbooks/jenzabar-one-extraction.md) |
 
 ---
 
