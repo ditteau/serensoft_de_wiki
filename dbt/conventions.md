@@ -118,6 +118,8 @@ WHERE table_schema = 'DEPOSIT';
 
 Presence is not authenticity — tables may exist but contain generated test data rather than real source data. Look at the rows.
 
+For how the Jenzabar CX and J1 flags flow through staging, routers and stubs, and each school's values, see [Jenzabar Source Feature Flags](source-feature-flags.md).
+
 ---
 
 ## Required Metadata Columns
