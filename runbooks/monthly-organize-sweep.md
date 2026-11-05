@@ -164,8 +164,8 @@ newer.
 ### Step 7 — Context pack
 
 Report section G gives the age of `~/ditteau_context_regen/`, the claude.ai project context
-pack. It is not in git. When the report flags it (over 60 days old), regenerate it with its
-`INSTRUCTIONS.md`.
+pack, for information only. **It is regenerated only when LVP initiates it** (decided
+2026-11-05), never as part of the sweep. It is not in git.
 
 ### Step 8 — Record
 
