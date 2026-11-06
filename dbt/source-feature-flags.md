@@ -66,7 +66,7 @@ Leaf models that belong to one source carry their own guard:
 |---|---|
 | `int_jcx__student_race`, `int_jcx__applicants` | `var('has_jenzabar_cx', false)` |
 | `int_j1__student_race`, `int_j1_student_versions` | `var('has_jenzabar_one', false)` |
-| `int_j1__gl_accounts`, `dim_gl_account`, `fact_gl_actual`, `fact_gl_actual_review`, `fact_gl_budget`, `fact_gl_period_balance`, `mart_finance_budget_variance_j1` | `var('has_jenzabar_one', false) and var('has_j1_finance', false)` |
+| `int_j1__gl_accounts`, `dim_gl_account`, `fact_gl_actual`, `fact_gl_actual_review`, `fact_gl_budget`, `fact_gl_period_balance`, `mart_finance_budget_variance_j1`, `mart_finance_budget_trend_j1` | `var('has_jenzabar_one', false) and var('has_j1_finance', false)` |
 
 ### C. Routers with Jinja `{% if %}` arms
 
