@@ -140,8 +140,8 @@ When documenting dbt patterns or conventions, include:
 4. **Cross-references**: Link to related docs (macros, testing, etc.)
 
 Example dbt standards documented in `dbt/conventions.md`:
-- 5 required metadata columns via `add_source_metadata()` macro
-- Var guard pattern: `{{ config(enabled=var('has_<source>', false)) }}`
+- 5 required metadata columns on staging models via the `add_source_metadata(source_name, table_name)` macro
+- Var guard pattern: `{{ config(enabled=var('has_<source>', false)) }}` — on staging models that are not router arms; a router arm stays enabled with a `WHERE 1=0` body (gotcha 2 in `ditteau_data_transform/CLAUDE.md`)
 - Staging tags: `['staging', '<source_system>']`
 - Naming: `stg_<source>__<entity>`
 - Materializations: views for staging, tables for marts
@@ -178,67 +178,19 @@ When documenting ownership or contacts, use these handles.
 
 ## Platform Context
 
-Key facts about the Ditteau platform (for context when writing docs):
+@~/ditteau_data_transform/docs/ai_context/ditteau_platform_context.md
 
-### Multi-Tenant Architecture
-- One Snowflake database per school: `{SCHOOLTAG}_DB`
-- Shared reference data in `DITTEAU_SHARED` database
-- Schools have different source systems → dbt var guards required
+Platform facts (database naming, layers, ingestion, source systems) and the rules
+that apply in every Ditteau Data repo come from the file imported above. Do not
+restate them here: an earlier summary in this file drifted and was wrong on database
+naming, intermediate materialization and ingestion.
 
-### Source Systems (6 active)
-- **SIS**: Jenzabar CX, Jenzabar One, Workday Student, Ellucian Banner
-- **CRM**: Slate
-- **Financial Aid**: PowerFAIDS
+When a wiki page states a platform fact, check it against that file's "where the
+truth lives" map and cite the source rather than this file.
 
-### Tech Stack
-- **Data Warehouse**: Snowflake
-- **Transformation**: dbt Core (only tool for transformations; no stored procedures)
-- **Ingestion**: Fivetran (most sources) or custom Python
-- **Orchestration**: TBD (scheduled jobs)
-- **Version Control**: GitHub (ditteau organization)
-
-### dbt Standards
-- Staging: `view` materialization, 1:1 with source tables
-- Intermediate: `ephemeral` or `view`
-- Marts: `table` materialization
-- All models: 5 required metadata columns
-- Optional sources: Use `var('has_<source>', false)` guards
-
----
-
-## Placeholder Pages
-
-These pages are referenced in `_sidebar.md` but not yet written:
-
-**Architecture:**
-- `architecture/snowflake-environment.md`
-- `architecture/data-flow.md`
-
-**dbt:**
-- `dbt/project-structure.md`
-- `dbt/testing.md`
-- `dbt/macros.md`
-
-**Snowflake:**
-- `snowflake/sql-style.md`
-- `snowflake/roles-permissions.md`
-- `snowflake/performance.md`
-
-**Source Systems:**
-- `source-systems/jenzabar-cx.md`
-- `source-systems/jenzabar-one.md`
-- `source-systems/workday-student.md`
-- `source-systems/banner.md`
-- `source-systems/slate.md`
-- `source-systems/powerfaids.md`
-
-**Governance:**
-- `governance/data-contracts.md`
-
-**Runbooks:**
-- `runbooks/source-refresh.md`
-
-When creating these pages, follow the content standards above and update `_sidebar.md` if needed.
+Decision records for both products live in `decisions/` (settled 2026-11-09 in the
+IKM D.10 record). Ditteau Data's are ADR-001 onward; Ditteau Archive's go in their
+own subfolder.
 
 ---
 
@@ -327,7 +279,7 @@ renamed AS (
     student_id,
     first_name,
     last_name,
-    {{ add_source_metadata() }}
+    {{ add_source_metadata('jenzabar_cx', 'student') }}
   FROM source
 )
 
