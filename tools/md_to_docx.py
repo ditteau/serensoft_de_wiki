@@ -4,7 +4,8 @@ Convert a wiki markdown document to .docx for team distribution.
 
 Handles the subset used in this wiki: headings, paragraphs, bullet and numbered
 lists, tables (incl. alignment row), fenced code blocks, blockquotes, horizontal
-rules, and inline **bold** / `code` / [text](link).
+rules, images on their own line (an .svg uses its .png sibling), and inline
+**bold** / `code` / [text](link).
 
 Usage:
     python tools/md_to_docx.py governance/production-operating-rules.md
@@ -119,6 +120,25 @@ def convert(md_path: Path, out_path: Path):
             for r in h.runs:
                 r.font.color.rgb = NAVY if level > 1 else MAROON
                 r.font.name = "Georgia"
+            i += 1; continue
+
+        # image on its own line: ![alt](path). Word can't embed SVG, so an .svg
+        # reference uses the .png beside it, which must exist.
+        m = re.match(r"^!\[([^\]]*)\]\(([^)]+)\)$", stripped)
+        if m:
+            img = (md_path.parent / m.group(2)).resolve()
+            if img.suffix.lower() == ".svg":
+                img = img.with_suffix(".png")
+            if not img.exists():
+                sys.exit(f"image not found: {img}")
+            doc.add_picture(str(img), width=Inches(6.5))
+            doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            if m.group(1):
+                cap = doc.add_paragraph()
+                cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                r = cap.add_run(m.group(1))
+                r.italic = True
+                r.font.color.rgb = GREY
             i += 1; continue
 
         if stripped.startswith("> "):
