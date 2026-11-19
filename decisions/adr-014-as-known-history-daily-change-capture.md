@@ -72,7 +72,8 @@ daily feed exists**.
   row in `_LOAD_HISTORY` for the same run, and row counts are within tolerance of the
   previous load.
 - A failed or partial run stops that day's capture and raises an alert.
-- Extraction runs on a schedule, not by hand. The scheduler is WDT's to choose.
+- Extraction runs on a schedule, not by hand. The scheduler technology is chosen when
+  the scheduling chunk is built (rollout plan 0.2).
 
 **2. Change capture into `DOCUMENT`.**
 - A new schema, `{SCHOOL}_DD_PROD.DOCUMENT`, holds one dbt snapshot per in-scope
