@@ -78,3 +78,4 @@
 - [ADR-011: Time-Series Forecast Schema Design (Proposed)](decisions/adr-011-time-series-forecast-schema.md)
 - [ADR-012: Publish the Full Code Domain, Registered Union Observed](decisions/adr-012-source-code-domain-conformance.md)
 - [ADR-013: Point-in-Time Feature Table for Persistence Modelling](decisions/adr-013-point-in-time-feature-table.md)
+- [ADR-014: As-Known History by Daily Change Capture (Proposed)](decisions/adr-014-as-known-history-daily-change-capture.md)
