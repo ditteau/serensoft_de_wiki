@@ -68,16 +68,23 @@ daily feed exists**.
 - **Loads become atomic.** `deposit_loader.py` loads into a temporary table and swaps
   it in, instead of truncating and then COPYing. Today a failed COPY leaves an empty
   table, which change capture would read as every row deleted.
+- Each run has a `RUN_ID` and records **`EXTRACTED_AT`**, the time the source extract
+  began.
 - Each run is verified before anything downstream runs: every table has a `SUCCESS`
   row in `_LOAD_HISTORY` for the same run, and row counts are within tolerance of the
   previous load.
-- A failed or partial run stops that day's capture and raises an alert.
+- A failed or partial run stops that day's capture and raises an alert. It is
+  recovered the same day, by a re-run or by an override recorded with who and why. A
+  day not recovered the same day cannot be recovered at all.
+- Census and close dates are scheduled events: a pre-check the day before, and a named
+  responder on the day.
 - Extraction runs on a schedule, not by hand. The scheduler technology is chosen when
   the scheduling chunk is built (rollout plan 0.2).
 
 **2. Change capture into `DOCUMENT`.**
 - A new schema, `{SCHOOL}_DD_PROD.DOCUMENT`, holds one dbt snapshot per in-scope
-  **Deposit source table**: `select *`, no transformation.
+  **Deposit source table**: raw, no transformation. It selects an explicit column list
+  generated from the registry, so a column nobody has classified cannot enter history.
 - Why raw, not staging:
   - It follows dbt's guidance to snapshot sources.
   - Raw history can be re-processed when staging logic is fixed, whereas history
@@ -99,13 +106,23 @@ daily feed exists**.
     83–90% and is not used.
   - **Banner, Workday, Slate, PowerFAIDS:** the default until a marker is measured
     against real extracts. Banner's keys are composite.
-- `known_from` is the extract's `_LOADED_AT`, not the snapshot run time and not a
-  source timestamp.
+- **Known time comes from the run.** `known_from` is the `EXTRACTED_AT` of the run
+  whose snapshot created the version. It is not the row's `_LOADED_AT` (load time, not
+  read time), and not a source timestamp.
+  - dbt's deletion rows (`hard_deletes: new_record`) copy the old version's columns,
+    including its `_LOADED_AT`. Verified in dbt-core 1.11's snapshot macro.
+  - A row-based rule would therefore give every deletion a zero-length interval.
+- The generator fails if a registry edit would change the `unique_key` of a snapshot
+  that already holds history.
 - The project-level snapshot defaults in `dbt_project.yml` (`strategy: timestamp`,
   `updated_at: updated_at`, `unique_key: id`, `target_schema: deterge`) are replaced.
-- `DOCUMENT` is the one schema that cannot be rebuilt from anything else. It is
-  permanent, and readable only by the build service role and Serensoft administration.
-  Consumers reach it through models.
+- **`DOCUMENT` is the one schema that cannot be rebuilt from anything else.**
+  - Permanent, with **7-day Time Travel**: a mistaken drop is recoverable by us for 7
+    days, then through Snowflake Support for 7 more.
+  - Its tables are owned by a **dedicated snapshot role**. Only the snapshot step runs
+    as that role.
+  - The general dbt build role can only read it. Serensoft administration can read it.
+    Consumers reach it through models.
 
 **3. Scoped bitemporal models in `DETERGE`.**
 - For each entity that a published figure depends on, an intermediate model joins
@@ -116,6 +133,8 @@ daily feed exists**.
   status, student type, program, applications, aid awards, GL, and the source decode
   tables for each.
 - Intervals are half-open and built by one shared macro.
+- An entity with no source effective dates is "as known" only: its valid time equals
+  its known time.
 - These models are transient and rebuildable from `DOCUMENT`.
 - Out of scope: tables no published figure reads, name and biography tables beyond
   their reporting columns, and the CX archive.
@@ -132,6 +151,13 @@ daily feed exists**.
 - `DECLARE` is written by a certification step outside dbt and is **never dbt-managed**,
   so no build or `--full-refresh` can recompute or overwrite it.
 - Restating a figure is a new run, never an overwrite.
+- **Aggregates only.** No student identifier, and no single-student row.
+  - Purges never touch a certified run, so "never overwritten" holds without exception.
+  - A unit-record submission is regenerated from `DOCUMENT` at the run's cutoff and
+    commit, not stored. After a purge it no longer matches the original file, by
+    design.
+- **90-day Time Travel.** It holds no student-level data, so long retention costs
+  nothing.
 
 **5. Labels.** Every published figure is labelled *census (as captured)*, *corrected*,
 or *current*.
@@ -139,8 +165,10 @@ or *current*.
 **6. Snap marts.**
 - The five `snap_*` marts in `DISTRIBUTE` become reporting views over the bitemporal
   models and `DECLARE`.
-- Until then they are set `full_refresh = false` and `transient = false`, and their
-  first-sight freeze is fixed before any J1 term flows through them.
+- They hold nothing as-known today, so they are **not** protected in place. They stay
+  rebuildable.
+- The views must land **before any school is enabled**. Otherwise their first-sight
+  freeze and fixed term sets would mishandle the school's first new terms.
 
 **7. Production only; no clone-down of history.**
 - `DOCUMENT` and `DECLARE` exist in PROD only (R5) and are **not cloned to DEV or
@@ -148,13 +176,23 @@ or *current*.
 - History logic is developed and tested against DEMEAU.
 
 **8. Purge.**
-- One written procedure purges by student key and by column across `DEPOSIT`, every
-  Deposit clone in other environments, `DOCUMENT`, `DECLARE` (where outputs are
-  per-student) and the `snap_*` tables.
+- One written procedure purges across `DEPOSIT`, every Deposit clone in other
+  environments, `DOCUMENT` and the `snap_*` tables. `DECLARE`, aggregates only, is
+  never purged. Three modes:
+  - by student key;
+  - by column;
+  - by age: versions whose known interval closed longer ago than the school's
+    retention period.
 - It executes within 5 business days of a register change or deletion request. Data is
-  then gone from our access in about 2 weeks and from Snowflake in about 3 (Fail-safe
-  is 7 days and cannot be shortened).
+  then gone from our access in about 2.5 weeks (`DOCUMENT`'s 7-day Time Travel), and
+  from Snowflake in about 3.5 (Fail-safe is 7 days and cannot be shortened).
 - `DOCUMENT` and `DECLARE` are added to `check_redaction.py`'s per-tenant sweep.
+
+**9. Retention and review before production.** A school's real capture does not start
+until both of these are in place:
+- **Retention:** the school's retention periods, or a recorded interim rule.
+- **A named second reviewer for grants and policies.** While only DEMEAU's generated
+  data is captured (development mode), LVP makes these changes and informs KKM.
 
 #### Relation to the medallion architecture
 
@@ -193,7 +231,9 @@ warehouse, reproducible and governed.
 
 **Not decided here:**
 - the restatement policy (who certifies, which figure appears where);
-- retention periods (G-09b);
+- retention periods themselves (G-09b). Only that some rule must exist before capture
+  is decided here (9);
+- who the production second reviewer is;
 - the scheduler technology;
 - the operational definition of census. That is RDT's and each school's.
 
@@ -229,6 +269,15 @@ warehouse, reproducible and governed.
 - **A new long-lived PII store.** Every change to an in-scope student record is
   retained in `DOCUMENT` until purged. That raises the stakes on the purge procedure,
   retention periods (still null, G-09b) and grants.
+- **Protection and purgeability pull against each other, and this ADR picks a point.**
+  - `DOCUMENT`'s 7-day Time Travel makes a mistaken drop recoverable, but delays every
+    purge by 6 days compared with the default.
+  - A Snowflake backup with a retention lock would protect better, but could never be
+    purged, so it is not adopted.
+- **Development-mode changes are not second-reviewed.** Grants and policies on DEMEAU
+  are made by LVP with KKM informed. A named reviewer is required only from a school's
+  first real capture. Evidence for SOC 2 segregation of duties therefore starts at
+  production, not before.
 - **TEST cannot verify history logic against real data**, because history is not
   cloned down. TEST verifies grants and masking; logic is verified on DEMEAU.
 - **"Known" means "captured by us"**, at extract resolution. It cannot reflect when the
