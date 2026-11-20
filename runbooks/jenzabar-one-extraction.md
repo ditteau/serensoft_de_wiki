@@ -130,11 +130,37 @@ typo against production with no confirmation and no undo.
 
 ```bash
 cd ~/ditteau_data_infra/docs/j1_extraction
+PY=~/testenv/bin/python3
 
-./extract_j1.py --tables-from <list>.txt --dry-run          # row counts only
-./extract_j1.py --tables-from <list>.txt --max-rows 100000 --out <inbox>
-./extract_j1.py --tables <table,table> --out <inbox>
+$PY extract_j1.py --tables-from <list>.txt --dry-run          # row counts only
+$PY extract_j1.py --tables-from <list>.txt --max-rows 100000 --out <inbox>
+$PY extract_j1.py --tables <table,table> --out <inbox>
 ```
+
+⚠️ **Run it under the project interpreter, not as `./extract_j1.py`.** The shebang
+is `/usr/bin/env python3`, which can find a Python without `pymssql`. The run then
+dies at connect. **Measured** 2026-11-12 and 2026-11-18.
+
+⚠️ **Pull related tables in one pass.** A J1 module is a chain of tables, and the
+source changes daily. Tables extracted on different days do not describe the same
+moment. At Merrimack an adjustment header pulled 13 days after its revisions and
+amounts could not be tied out: 33 adjustments had been approved in between. Keep
+one list per module and always pull it whole:
+
+| List | Module |
+|---|---|
+| `tables_budget_chain.txt` | Budget: versions, line items, amounts, GL crosswalk, worksheets, adjustments, revisions (22 tables) |
+| `tables_faculty_workload.txt` | Faculty workload (8 tables) |
+
+○ The budget list deliberately excludes `gl_master`. It belongs with `trans_hist`.
+  Pulled alone, it breaks the tie between the account master and the ledger,
+  because its balance columns move with every posting.
+○ A budget line that points at a GL account newer than the loaded `gl_master` stays
+  unresolved until both are pulled again. Expect a few after any budget-only pass.
+
+⚠️ **Use a new, dated `--out` folder for every pass**, such as
+`<inbox>/J1_budget_chain_<yyyy-mm-dd>`. Existing CSVs are skipped (below), so
+reusing a folder silently mixes two dates in one load.
 
 ○ Columns come from `ditteau_schema_registry` in **ordinal order**. That is the load
   contract — `deposit_loader` maps positionally as `$1..$N` and never reads headers, so
@@ -173,7 +199,7 @@ tables.
 
 ```bash
 cd ~/ditteau_data_infra/deposit_loader
-python deposit_loader.py --school <CODE> --env DEV --warehouse <WAREHOUSE> \
+~/testenv/bin/python3 deposit_loader.py --school <CODE> --env DEV --warehouse <WAREHOUSE> \
     load-all jenzabar_one <inbox> --truncate
 ```
 
@@ -185,6 +211,15 @@ writing a load-history row.
 ○ ⚠️ `COPY INTO` runs `ON_ERROR='CONTINUE'`, so a table can drop rows and still
   complete. Read the `load-all` summary's rejected-row counts; do not assume a clean
   exit means a clean load.
+○ **Validate before loading:** `deposit_loader.py ... validate jenzabar_one <table>
+  <file>` for every CSV. It checks column order against the registry.
+○ ⚠️ **`--truncate` replaces what is published.** Before reloading a table that
+  feeds a fact, compare the new CSVs with DEPOSIT row by row, and say which
+  published figures will move and which tests pin them. Then load and rebuild
+  downstream.
+○ **After every load, run the redaction check:**
+  `~/testenv/bin/python3 ~/ditteau_data_transform/scripts/check_redaction.py`.
+  A database it reports `NOT CHECKED` is unverified, not clean.
 ○ `--from-stage` exists for when the extract ran on a machine that is not the loader's:
   the producer `PUT`s to the internal stage and the loader COPYs from there. ⚠️ That
   path cannot run the ragged-row scan — prefer a local load when the file is local.
@@ -279,9 +314,11 @@ before modelling either.
 
 ## Site specifics
 
-Server address, database name, login and keychain service are **not** recorded here.
-For Merrimack they live in `~/.claude/commands/merrimack-j1.md` on LVP's machine,
-alongside the measured row counts and the current open questions.
+Server address, database name, login, keychain service and which VPN client
+reaches which network are **not** recorded here. For Merrimack they live in
+`~/.claude/commands/merrimack-j1.md` on LVP's machine, alongside the measured row
+counts and the current open questions. ⚠️ That file is not version-controlled.
+General procedure belongs here, not there.
 
 Engagement context: `ditteau_data_transform/docs/engagement/merrimack_finance/`
 Platform plan: `ditteau_data_infra/docs/j1_extraction/README.md`
